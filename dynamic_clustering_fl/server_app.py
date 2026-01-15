@@ -42,6 +42,8 @@ def main(grid: Grid, context: Context) -> None:
 
     # Configure MLflow
     mlflow.set_experiment(mlflow_experiment)
+    mlflow.config.enable_system_metrics_logging()
+    mlflow.config.set_system_metrics_sampling_interval(1)
     mlflow.sklearn.autolog(log_models=False)  # Auto-log sklearn metrics
 
     # Create initial KMeans Model
