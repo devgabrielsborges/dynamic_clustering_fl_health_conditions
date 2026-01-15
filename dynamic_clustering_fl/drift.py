@@ -366,3 +366,18 @@ class DriftTracker:
             accuracy_drop=accuracy_drop,
             recovery_rounds=recovery_rounds,
         )
+
+    def get_summary(self) -> dict:
+        """Get summary of drift tracking for logging."""
+        drift_rounds = []
+        if self.simulator.drift_type != DriftType.NONE:
+            drift_rounds.append(self.simulator.config.drift_round)
+
+        return {
+            "drift_type": self.simulator.drift_type.value,
+            "total_drift_events": 1 if drift_rounds else 0,
+            "drift_rounds": drift_rounds,
+            "pre_drift_accuracy": self.pre_drift_accuracy,
+            "recovery_round": self.recovery_round,
+            "total_rounds_tracked": len(self.accuracy_history),
+        }
