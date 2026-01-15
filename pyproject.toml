@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "clustered-fl-cifar10"
+name = "dynamic-clustering-fl"
 version = "1.0.0"
-description = "Clustered Federated Learning for CIFAR-10 with scikit-learn and Flower"
+description = "Clustered Federated Learning - Dataset and Model Agnostic"
 license = "Apache-2.0"
 dependencies = [
     "flwr[simulation]>=1.25.0",
@@ -28,6 +28,8 @@ publisher = "flwrlabs"
 serverapp = "dynamic_clustering_fl.server_app:app"
 clientapp = "dynamic_clustering_fl.client_app:app"
 
+# Default configuration - can be overridden via CLI
+# Usage: flwr run . --run-config "dataset='mnist' model='mlp' num-server-rounds=10"
 [tool.flwr.app.config]
 # Training configuration
 num-server-rounds = 15

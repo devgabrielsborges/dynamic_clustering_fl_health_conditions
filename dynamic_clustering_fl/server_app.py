@@ -6,7 +6,6 @@ Supports:
 - Adaptive clustering: Concept drift detection with adaptive re-clustering
 """
 
-import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
@@ -14,7 +13,6 @@ from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
 from flwr.app import ArrayRecord, Context, MetricRecord
-from flwr.common import NDArrays
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
 
@@ -72,19 +70,11 @@ class ClusteredFedAvg(FedAvg):
         server_round: int,
         results: List,
     ) -> Tuple[Optional[ArrayRecord], MetricRecord]:
-        """Aggregate training results with client clustering.
-
-        Args:
-            server_round: Current round number
-            results: List of Message objects with training results
-
-        Returns:
-            Tuple of (ArrayRecord with aggregated parameters, MetricRecord with metrics)
-        """
+        """Aggregate training results with clustering."""
         if not results:
             return None, MetricRecord({})
 
-        # Extract parameters and metrics from results
+        # Extract parameters and metrics
         client_params = []
         client_weights = []
         client_ids = []
@@ -257,7 +247,18 @@ class ClusteredFedAvg(FedAvg):
         if _mlflow_run is not None:
             mlflow.log_metrics(metrics, step=server_round)
 
-        return metrics
+            # Log cluster sizes
+            for cluster_id in range(self.clustering.n_clusters):
+                cluster_size = sum(
+                    1
+                    for cid in client_ids
+                    if self.clustering.get_cluster_assignment(cid) == cluster_id
+                )
+                mlflow.log_metric(
+                    f"cluster_{cluster_id}_size", cluster_size, step=server_round
+                )
+
+        return ArrayRecord(aggregated_params), MetricRecord(metrics)
 
 
 def generate_experiment_name(config: dict) -> str:
@@ -362,7 +363,10 @@ def main(grid: Grid, context: Context) -> None:
     model = create_initial_model(dataset=dataset)
     arrays = ArrayRecord(get_model_params(model))
 
-    # Initialize ClusteredFedAvg strategy
+    # Get initial parameters
+    arrays = ArrayRecord(model.get_parameters())
+
+    # Initialize strategy
     strategy = ClusteredFedAvg(
         clustering_strategy=clustering_strategy,
         fraction_train=1.0,
@@ -371,7 +375,7 @@ def main(grid: Grid, context: Context) -> None:
 
     # Define evaluation function
     def evaluate_fn(server_round, arrays):
-        return global_evaluate(server_round, arrays)
+        return global_evaluate(server_round, arrays, model, dataset)
 
     # Start MLflow run
     with mlflow.start_run(run_name=mlflow_run_name) as run:
@@ -441,11 +445,37 @@ def main(grid: Grid, context: Context) -> None:
 def global_evaluate(
     server_round: int,
     arrays: ArrayRecord,
+    model,
+    dataset,
 ) -> MetricRecord:
-    """Evaluate the global model.
+    """Evaluate the global model on centralized test data."""
+    ndarrays = arrays.to_numpy_ndarrays()
+    if len(ndarrays) == 0:
+        return MetricRecord({})
 
-    Since we don't have centralized test data, we aggregate client metrics.
-    """
-    # For now, just return empty metrics
-    # In practice, you could maintain a validation set on the server
-    return MetricRecord({})
+    model.set_parameters(ndarrays)
+
+    # Get centralized test data
+    try:
+        X_test, y_test = dataset.load_centralized_test()
+        metrics = model.evaluate(X_test, y_test)
+
+        # Log to MLflow
+        if _mlflow_run is not None:
+            mlflow.log_metrics(
+                {
+                    "global_test_accuracy": metrics.get("accuracy", 0.0),
+                    "global_test_loss": metrics.get("loss", 0.0),
+                },
+                step=server_round,
+            )
+
+        return MetricRecord(
+            {
+                "test_accuracy": metrics.get("accuracy", 0.0),
+                "test_loss": metrics.get("loss", 0.0),
+            }
+        )
+    except Exception as e:
+        print(f"Warning: Could not evaluate globally: {e}")
+        return MetricRecord({})
