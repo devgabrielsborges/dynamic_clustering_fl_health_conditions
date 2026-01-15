@@ -28,15 +28,14 @@ def set_model_params(model: MLPClassifier, params: NDArrays) -> MLPClassifier:
     """Set the parameters of a sklearn MLPClassifier model."""
     # Check if model has been fitted (has coefs_ attribute)
     if not hasattr(model, "coefs_"):
-        # Initialize model structure by fitting on dummy data
-        # Ensure we have at least one sample per class to avoid class mismatch
+        # Initialize model structure using partial_fit with all classes
         dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
         dummy_y = np.arange(NUM_CLASSES)  # One sample per class [0,1,2,...,9]
-        model.fit(dummy_X, dummy_y)
+        model.partial_fit(dummy_X, dummy_y, classes=np.arange(NUM_CLASSES))
 
     n_layers = len(model.coefs_)
-    model.coefs_ = params[:n_layers]
-    model.intercepts_ = params[n_layers:]
+    model.coefs_ = [p.copy() for p in params[:n_layers]]
+    model.intercepts_ = [p.copy() for p in params[n_layers:]]
     return model
 
 
@@ -45,14 +44,14 @@ def create_mlp_model(hidden_layers: tuple = HIDDEN_LAYERS) -> MLPClassifier:
     model = MLPClassifier(
         hidden_layer_sizes=hidden_layers,
         activation="relu",
-        solver="adam",
+        solver="sgd",  # SGD works better with partial_fit
         alpha=0.0001,
-        batch_size=32,
+        batch_size=64,
         learning_rate="adaptive",
-        learning_rate_init=0.001,
-        max_iter=1,  # We'll control training iterations via epochs
+        learning_rate_init=0.01,
+        max_iter=10,  # More iterations per fit call
         random_state=42,
-        warm_start=False,  # Don't use warm_start to avoid class mismatch issues
+        warm_start=True,  # Continue from previous weights
         verbose=False,
     )
     return model
@@ -64,10 +63,10 @@ def create_initial_model() -> MLPClassifier:
     This is used by the server to create initial parameters.
     """
     model = create_mlp_model()
-    # Initialize with dummy data to create weight matrices
-    dummy_X = np.random.randn(10, INPUT_SIZE).astype(np.float32)
-    dummy_y = np.random.randint(0, NUM_CLASSES, 10)
-    model.fit(dummy_X, dummy_y)
+    # Initialize with dummy data using partial_fit to specify all classes
+    dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
+    dummy_y = np.arange(NUM_CLASSES)  # [0, 1, 2, ..., 9]
+    model.partial_fit(dummy_X, dummy_y, classes=np.arange(NUM_CLASSES))
     return model
 
 

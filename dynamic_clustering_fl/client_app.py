@@ -37,14 +37,19 @@ def train(msg: Message, context: Context):
     if len(ndarrays) > 0:
         set_model_params(model, ndarrays)
 
-    # Train the model on local data
-    # Use multiple iterations for better convergence
-    local_epochs = context.run_config.get("local-epochs", 3)
+    # Train the model on local data using partial_fit
+    # This continues from the received weights instead of reinitializing
+    local_epochs = context.run_config.get("local-epochs", 5)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for _ in range(local_epochs):
-            model.fit(X_train, y_train)
+            # Shuffle data each epoch
+            indices = np.random.permutation(len(X_train))
+            X_shuffled = X_train[indices]
+            y_shuffled = y_train[indices]
+            # partial_fit continues from current weights
+            model.partial_fit(X_shuffled, y_shuffled, classes=np.arange(10))
 
     # Evaluate on training data
     y_train_pred = model.predict(X_train)
@@ -87,10 +92,6 @@ def evaluate(msg: Message, context: Context):
     model = create_mlp_model()
     if len(ndarrays) > 0:
         set_model_params(model, ndarrays)
-
-        # Need to call partial_fit to initialize the model properly
-        # Use a small subset to avoid changing parameters significantly
-        model.partial_fit(X_test[:10], y_test[:10], classes=np.arange(10))
 
     # Evaluate on test data
     y_test_pred = model.predict(X_test)

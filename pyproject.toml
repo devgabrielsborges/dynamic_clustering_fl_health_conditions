@@ -30,8 +30,8 @@ clientapp = "dynamic_clustering_fl.client_app:app"
 [tool.flwr.app.config]
 num-server-rounds = 15
 n-client-clusters = 3
-clustering-interval = 5
-local-epochs = 3
+clustering-interval = 3
+local-epochs = 5
 mlflow-experiment-name = "dynamic-clustering-fl-cifar10"
 mlflow-run-name = "clustered-fedavg-cifar10"
 
