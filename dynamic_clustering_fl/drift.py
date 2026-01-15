@@ -12,7 +12,7 @@ Reference: Peng & Tang (2025), Liu et al. (2025)
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 
 
@@ -252,7 +252,7 @@ def create_drift_simulator(
     """Factory function to create drift simulator.
 
     Args:
-        drift_type: Type of drift ('none', 'sudden', 'gradual', 'recurrent', 'incremental')
+        drift_type: Type of drift (none, sudden, gradual, recurrent, incremental)
         drift_round: Round when drift starts
         drift_magnitude: Intensity of drift (0-1)
         transition_rounds: Duration for gradual drift

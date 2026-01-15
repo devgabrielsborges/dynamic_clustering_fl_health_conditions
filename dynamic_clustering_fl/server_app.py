@@ -25,6 +25,8 @@ from dynamic_clustering_fl.task import (
     set_model_params,
     aggregate_weighted,
     compute_param_distance,
+    set_current_dataset,
+    get_dataset_config,
 )
 from dynamic_clustering_fl.clustering import (
     ClusteringStrategy,
@@ -282,6 +284,10 @@ def main(grid: Grid, context: Context) -> None:
     dataset: str = context.run_config.get("dataset", "cifar10")
     model_type: str = context.run_config.get("model", "mlp")
 
+    # Set current dataset for model initialization
+    set_current_dataset(dataset)
+    ds_config = get_dataset_config(dataset)
+
     # Clustering mode: static, dynamic, adaptive
     clustering_mode: str = context.run_config.get("clustering-mode", "dynamic")
 
@@ -327,7 +333,7 @@ def main(grid: Grid, context: Context) -> None:
     print("\n" + "=" * 60)
     print("Clustered Federated Learning Experiment")
     print("=" * 60)
-    print(f"Dataset: {dataset}")
+    print(f"Dataset: {dataset} ({ds_config['num_classes']} classes)")
     print(f"Model: {model_type}")
     print(f"Clustering mode: {clustering_mode}")
     print(f"Number of clusters: {n_client_clusters}")
@@ -337,7 +343,7 @@ def main(grid: Grid, context: Context) -> None:
         print(f"Drift magnitude: {drift_magnitude}")
     print("=" * 60 + "\n")
 
-    model = create_initial_model()
+    model = create_initial_model(dataset=dataset)
     arrays = ArrayRecord(get_model_params(model))
 
     # Initialize ClusteredFedAvg strategy
@@ -402,8 +408,8 @@ def main(grid: Grid, context: Context) -> None:
         print("\nSaving final model...")
         ndarrays = result.arrays.to_numpy_ndarrays()
         if len(ndarrays) > 0:
-            final_model = create_mlp_model()
-            set_model_params(final_model, ndarrays)
+            final_model = create_mlp_model(dataset=dataset)
+            set_model_params(final_model, ndarrays, dataset=dataset)
 
             model_filename = f"{model_type}_{dataset}_{clustering_mode}_model.pkl"
             joblib.dump(final_model, model_filename)

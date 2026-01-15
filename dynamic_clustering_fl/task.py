@@ -1,15 +1,71 @@
-"""dynamic_clustering_fl: Task definitions for clustered federated learning with CIFAR-10."""
+"""dynamic_clustering_fl: Task definitions for clustered federated learning."""
 
 import numpy as np
 from flwr.common import NDArrays
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
 from sklearn.neural_network import MLPClassifier
+from typing import Tuple
 
-# Configuration for CIFAR-10
-INPUT_SIZE = 32 * 32 * 3  # CIFAR-10 images are 32x32 RGB
-NUM_CLASSES = 10
+DATASET_CONFIGS = {
+    "cifar10": {
+        "hf_name": "uoft-cs/cifar10",
+        "input_size": 32 * 32 * 3,  # 32x32 RGB
+        "num_classes": 10,
+        "image_key": "img",
+        "label_key": "label",
+    },
+    "cifar100": {
+        "hf_name": "uoft-cs/cifar100",
+        "input_size": 32 * 32 * 3,  # 32x32 RGB
+        "num_classes": 100,
+        "image_key": "img",
+        "label_key": "fine_label",
+    },
+    "fashion_mnist": {
+        "hf_name": "zalando-datasets/fashion_mnist",
+        "input_size": 28 * 28,  # 28x28 grayscale
+        "num_classes": 10,
+        "image_key": "image",
+        "label_key": "label",
+    },
+    "mnist": {
+        "hf_name": "ylecun/mnist",
+        "input_size": 28 * 28,  # 28x28 grayscale
+        "num_classes": 10,
+        "image_key": "image",
+        "label_key": "label",
+    },
+}
+
+# Default configuration (will be updated dynamically)
+_current_dataset = "cifar10"
 HIDDEN_LAYERS = (128, 64)
+
+
+def get_dataset_config(dataset: str = None) -> dict:
+    """Get configuration for a specific dataset."""
+    ds = dataset or _current_dataset
+    if ds not in DATASET_CONFIGS:
+        raise ValueError(
+            f"Unknown dataset: {ds}. Available: {list(DATASET_CONFIGS.keys())}"
+        )
+    return DATASET_CONFIGS[ds]
+
+
+def set_current_dataset(dataset: str) -> None:
+    """Set the current dataset for the experiment."""
+    global _current_dataset
+    if dataset not in DATASET_CONFIGS:
+        raise ValueError(
+            f"Unknown dataset: {dataset}. Available: {list(DATASET_CONFIGS.keys())}"
+        )
+    _current_dataset = dataset
+
+
+def get_current_dataset() -> str:
+    """Get the current dataset name."""
+    return _current_dataset
 
 
 def get_model_params(model: MLPClassifier) -> NDArrays:
@@ -24,14 +80,22 @@ def get_model_params(model: MLPClassifier) -> NDArrays:
     return params
 
 
-def set_model_params(model: MLPClassifier, params: NDArrays) -> MLPClassifier:
+def set_model_params(
+    model: MLPClassifier,
+    params: NDArrays,
+    dataset: str = None,
+) -> MLPClassifier:
     """Set the parameters of a sklearn MLPClassifier model."""
+    config = get_dataset_config(dataset)
+    input_size = config["input_size"]
+    num_classes = config["num_classes"]
+
     # Check if model has been fitted (has coefs_ attribute)
     if not hasattr(model, "coefs_"):
         # Initialize model structure using partial_fit with all classes
-        dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
-        dummy_y = np.arange(NUM_CLASSES)  # One sample per class [0,1,2,...,9]
-        model.partial_fit(dummy_X, dummy_y, classes=np.arange(NUM_CLASSES))
+        dummy_X = np.random.randn(num_classes, input_size).astype(np.float32)
+        dummy_y = np.arange(num_classes)
+        model.partial_fit(dummy_X, dummy_y, classes=np.arange(num_classes))
 
     n_layers = len(model.coefs_)
     model.coefs_ = [p.copy() for p in params[:n_layers]]
@@ -39,8 +103,11 @@ def set_model_params(model: MLPClassifier, params: NDArrays) -> MLPClassifier:
     return model
 
 
-def create_mlp_model(hidden_layers: tuple = HIDDEN_LAYERS) -> MLPClassifier:
-    """Create an MLPClassifier for CIFAR-10 classification."""
+def create_mlp_model(
+    hidden_layers: tuple = HIDDEN_LAYERS,
+    dataset: str = None,
+) -> MLPClassifier:
+    """Create an MLPClassifier for classification."""
     model = MLPClassifier(
         hidden_layer_sizes=hidden_layers,
         activation="relu",
@@ -57,30 +124,52 @@ def create_mlp_model(hidden_layers: tuple = HIDDEN_LAYERS) -> MLPClassifier:
     return model
 
 
-def create_initial_model() -> MLPClassifier:
+def create_initial_model(dataset: str = None) -> MLPClassifier:
     """Create and initialize an MLPClassifier model.
 
     This is used by the server to create initial parameters.
     """
-    model = create_mlp_model()
+    config = get_dataset_config(dataset)
+    input_size = config["input_size"]
+    num_classes = config["num_classes"]
+
+    model = create_mlp_model(dataset=dataset)
     # Initialize with dummy data using partial_fit to specify all classes
-    dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
-    dummy_y = np.arange(NUM_CLASSES)  # [0, 1, 2, ..., 9]
-    model.partial_fit(dummy_X, dummy_y, classes=np.arange(NUM_CLASSES))
+    dummy_X = np.random.randn(num_classes, input_size).astype(np.float32)
+    dummy_y = np.arange(num_classes)
+    model.partial_fit(dummy_X, dummy_y, classes=np.arange(num_classes))
     return model
 
 
-fds = None  # Cache FederatedDataset
+fds_cache = {}  # Cache FederatedDataset per dataset
 
 
-def load_data(partition_id: int, num_partitions: int):
-    """Load CIFAR-10 data for the given partition."""
-    global fds
-    if fds is None:
+def load_data(
+    partition_id: int,
+    num_partitions: int,
+    dataset: str = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Load data for the given partition.
+
+    Args:
+        partition_id: Client partition ID
+        num_partitions: Total number of partitions
+        dataset: Dataset name (cifar10, cifar100, fashion_mnist, mnist)
+
+    Returns:
+        Tuple of (X_train, X_test, y_train, y_test)
+    """
+    global fds_cache
+    config = get_dataset_config(dataset)
+    ds_name = dataset or _current_dataset
+
+    if ds_name not in fds_cache:
         partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
-            dataset="uoft-cs/cifar10", partitioners={"train": partitioner}
+        fds_cache[ds_name] = FederatedDataset(
+            dataset=config["hf_name"], partitioners={"train": partitioner}
         )
+
+    fds = fds_cache[ds_name]
 
     # Load partition for this client
     partition = fds.load_partition(partition_id, "train")
@@ -88,15 +177,19 @@ def load_data(partition_id: int, num_partitions: int):
     # Split into train and test
     partition_train_test = partition.train_test_split(test_size=0.2, seed=42)
 
+    # Get keys from config
+    image_key = config["image_key"]
+    label_key = config["label_key"]
+
     # Extract features and labels
     X_train = np.array(
-        [np.array(img).flatten() for img in partition_train_test["train"]["img"]]
+        [np.array(img).flatten() for img in partition_train_test["train"][image_key]]
     )
-    y_train = np.array(partition_train_test["train"]["label"])
+    y_train = np.array(partition_train_test["train"][label_key])
     X_test = np.array(
-        [np.array(img).flatten() for img in partition_train_test["test"]["img"]]
+        [np.array(img).flatten() for img in partition_train_test["test"][image_key]]
     )
-    y_test = np.array(partition_train_test["test"]["label"])
+    y_test = np.array(partition_train_test["test"][label_key])
 
     # Normalize pixel values to [0, 1]
     X_train = X_train.astype(np.float32) / 255.0

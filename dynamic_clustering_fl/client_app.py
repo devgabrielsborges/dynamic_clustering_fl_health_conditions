@@ -1,4 +1,4 @@
-"""dynamic_clustering_fl: A Flower / sklearn app for CIFAR-10 classification."""
+"""dynamic_clustering_fl: A Flower / sklearn app for image classification."""
 
 import warnings
 import numpy as np
@@ -12,6 +12,8 @@ from dynamic_clustering_fl.task import (
     get_model_params,
     set_model_params,
     load_data,
+    get_dataset_config,
+    set_current_dataset,
 )
 
 # Flower ClientApp
@@ -20,7 +22,13 @@ app = ClientApp()
 
 @app.train()
 def train(msg: Message, context: Context):
-    """Train the MLP model on local CIFAR-10 data."""
+    """Train the MLP model on local data."""
+
+    # Get dataset configuration
+    dataset = context.run_config.get("dataset", "cifar10")
+    set_current_dataset(dataset)
+    config = get_dataset_config(dataset)
+    num_classes = config["num_classes"]
 
     # Get received model parameters
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
@@ -28,17 +36,18 @@ def train(msg: Message, context: Context):
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    X_train, X_test, y_train, y_test = load_data(partition_id, num_partitions)
+    X_train, X_test, y_train, y_test = load_data(
+        partition_id, num_partitions, dataset=dataset
+    )
 
     # Create MLP model
-    model = create_mlp_model()
+    model = create_mlp_model(dataset=dataset)
 
     # Set parameters if received from server
     if len(ndarrays) > 0:
-        set_model_params(model, ndarrays)
+        set_model_params(model, ndarrays, dataset=dataset)
 
     # Train the model on local data using partial_fit
-    # This continues from the received weights instead of reinitializing
     local_epochs = context.run_config.get("local-epochs", 5)
 
     with warnings.catch_warnings():
@@ -49,7 +58,7 @@ def train(msg: Message, context: Context):
             X_shuffled = X_train[indices]
             y_shuffled = y_train[indices]
             # partial_fit continues from current weights
-            model.partial_fit(X_shuffled, y_shuffled, classes=np.arange(10))
+            model.partial_fit(X_shuffled, y_shuffled, classes=np.arange(num_classes))
 
     # Evaluate on training data
     y_train_pred = model.predict(X_train)
@@ -58,7 +67,7 @@ def train(msg: Message, context: Context):
     try:
         y_train_proba = model.predict_proba(X_train)
         train_loss = log_loss(y_train, y_train_proba)
-    except:
+    except Exception:
         train_loss = 0.0
 
     # Construct and return reply Message
@@ -78,7 +87,11 @@ def train(msg: Message, context: Context):
 
 @app.evaluate()
 def evaluate(msg: Message, context: Context):
-    """Evaluate the MLP model on local CIFAR-10 test data."""
+    """Evaluate the MLP model on local test data."""
+
+    # Get dataset configuration
+    dataset = context.run_config.get("dataset", "cifar10")
+    set_current_dataset(dataset)
 
     # Get received model parameters
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
@@ -86,12 +99,14 @@ def evaluate(msg: Message, context: Context):
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    X_train, X_test, y_train, y_test = load_data(partition_id, num_partitions)
+    X_train, X_test, y_train, y_test = load_data(
+        partition_id, num_partitions, dataset=dataset
+    )
 
     # Create MLP model and set parameters
-    model = create_mlp_model()
+    model = create_mlp_model(dataset=dataset)
     if len(ndarrays) > 0:
-        set_model_params(model, ndarrays)
+        set_model_params(model, ndarrays, dataset=dataset)
 
     # Evaluate on test data
     y_test_pred = model.predict(X_test)
@@ -100,7 +115,7 @@ def evaluate(msg: Message, context: Context):
     try:
         y_test_proba = model.predict_proba(X_test)
         test_loss = log_loss(y_test, y_test_proba)
-    except:
+    except Exception:
         test_loss = 0.0
 
     # Construct and return reply Message
