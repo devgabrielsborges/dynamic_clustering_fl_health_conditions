@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "clustered-fl-cifar10"
+name = "dynamic-clustering-fl"
 version = "1.0.0"
-description = "Clustered Federated Learning for CIFAR-10 with scikit-learn and Flower"
+description = "Clustered Federated Learning - Dataset and Model Agnostic"
 license = "Apache-2.0"
 dependencies = [
     "flwr[simulation]>=1.25.0",
@@ -27,13 +27,31 @@ publisher = "flwrlabs"
 serverapp = "dynamic_clustering_fl.server_app:app"
 clientapp = "dynamic_clustering_fl.client_app:app"
 
+# Default configuration - can be overridden via CLI
+# Usage: flwr run . --run-config "dataset='mnist' model='mlp' num-server-rounds=10"
 [tool.flwr.app.config]
+# Core FL settings
 num-server-rounds = 15
+local-epochs = 5
+num-partitions = 10
+
+# Dataset and model selection
+# Available datasets: cifar10, mnist, fashion-mnist, cifar100
+# Available models: mlp, logistic
+dataset = "cifar10"
+model = "mlp"
+
+# Model hyperparameters
+hidden-layers = "128,64"
+learning-rate = 0.01
+
+# Clustering settings
 n-client-clusters = 3
 clustering-interval = 3
-local-epochs = 5
-mlflow-experiment-name = "dynamic-clustering-fl-cifar10"
-mlflow-run-name = "clustered-fedavg-cifar10"
+
+# MLflow configuration
+mlflow-experiment-name = "dynamic-clustering-fl"
+mlflow-run-name = "clustered-fedavg"
 
 [tool.flwr.federations]
 default = "local-simulation"
