@@ -58,19 +58,19 @@ class ClusteredFedAvg(FedAvg):
     def aggregate_train(
         self,
         server_round: int,
-        results: List[Tuple],
-    ) -> Tuple[Optional[NDArrays], Dict[str, float]]:
+        results: List,
+    ) -> Tuple[Optional[ArrayRecord], MetricRecord]:
         """Aggregate training results with client clustering.
 
         Args:
             server_round: Current round number
-            results: List of (client_proxy, train_result) tuples
+            results: List of Message objects with training results
 
         Returns:
-            Aggregated parameters and metrics
+            Tuple of (ArrayRecord with aggregated parameters, MetricRecord with metrics)
         """
         if not results:
-            return None, {}
+            return None, MetricRecord({})
 
         # Extract parameters and metrics from results
         client_params = []
@@ -93,7 +93,11 @@ class ClusteredFedAvg(FedAvg):
             client_ids, client_params, client_weights, server_round
         )
 
-        return aggregated_params, metrics
+        # Convert to ArrayRecord and MetricRecord for Flower API
+        if aggregated_params is None:
+            return None, MetricRecord(metrics)
+
+        return ArrayRecord(aggregated_params), MetricRecord(metrics)
 
     def _cluster_clients(
         self, client_ids: List[str], client_params: List[NDArrays], server_round: int
