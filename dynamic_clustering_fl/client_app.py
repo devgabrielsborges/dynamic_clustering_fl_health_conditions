@@ -1,18 +1,17 @@
-"""dynamic_clustering_fl: A Flower / sklearn app with clustering support."""
+"""dynamic_clustering_fl: A Flower / sklearn app for CIFAR-10 classification."""
 
 import warnings
+import numpy as np
 
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
+from sklearn.metrics import accuracy_score, log_loss
 
 from dynamic_clustering_fl.task import (
-    N_CLUSTERS,
-    create_kmeans_model,
+    create_mlp_model,
     get_model_params,
+    set_model_params,
     load_data,
-    evaluate_clustering,
-    compute_inertia,
-    compute_cluster_distribution,
 )
 
 # Flower ClientApp
@@ -21,39 +20,46 @@ app = ClientApp()
 
 @app.train()
 def train(msg: Message, context: Context):
-    """Train the KMeans model on local data."""
+    """Train the MLP model on local CIFAR-10 data."""
 
-    # Get number of clusters from config
-    n_clusters = context.run_config.get("n-clusters", N_CLUSTERS)
-
-    # Get received cluster centers to use as initialization
+    # Get received model parameters
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
-    init_centers = ndarrays[0] if len(ndarrays) > 0 else None
 
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     X_train, X_test, y_train, y_test = load_data(partition_id, num_partitions)
 
-    # Create KMeans model with received centers as initialization
-    model = create_kmeans_model(n_clusters, init_centers)
+    # Create MLP model
+    model = create_mlp_model()
 
-    # Train the model on local data
+    # Set parameters if received from server
+    if len(ndarrays) > 0:
+        set_model_params(model, ndarrays)
+
+    # Train the model on local data using partial_fit
+    # This continues from the received weights instead of reinitializing
+    local_epochs = context.run_config.get("local-epochs", 5)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        model.fit(X_train)
+        for _ in range(local_epochs):
+            # Shuffle data each epoch
+            indices = np.random.permutation(len(X_train))
+            X_shuffled = X_train[indices]
+            y_shuffled = y_train[indices]
+            # partial_fit continues from current weights
+            model.partial_fit(X_shuffled, y_shuffled, classes=np.arange(10))
 
-    # Get cluster assignments for training data
-    train_labels = model.labels_
+    # Evaluate on training data
+    y_train_pred = model.predict(X_train)
+    train_accuracy = accuracy_score(y_train, y_train_pred)
 
-    # Compute clustering metrics
-    clustering_metrics = evaluate_clustering(X_train, train_labels)
-
-    # Compute inertia (within-cluster sum of squares)
-    inertia = compute_inertia(X_train, model)
-
-    # Compute cluster distribution
-    cluster_dist = compute_cluster_distribution(train_labels, n_clusters)
+    try:
+        y_train_proba = model.predict_proba(X_train)
+        train_loss = log_loss(y_train, y_train_proba)
+    except:
+        train_loss = 0.0
 
     # Construct and return reply Message
     ndarrays = get_model_params(model)
@@ -61,19 +67,9 @@ def train(msg: Message, context: Context):
 
     metrics = {
         "num-examples": len(X_train),
-        "inertia": inertia,
-        "silhouette_score": clustering_metrics.get("silhouette_score", -1.0),
-        "calinski_harabasz_score": clustering_metrics.get(
-            "calinski_harabasz_score", 0.0
-        ),
-        "davies_bouldin_score": clustering_metrics.get(
-            "davies_bouldin_score", float("inf")
-        ),
+        "train_accuracy": float(train_accuracy),
+        "train_loss": float(train_loss),
     }
-
-    # Add cluster distribution to metrics
-    for i in range(n_clusters):
-        metrics[f"cluster_{i}_ratio"] = float(cluster_dist[i])
 
     metric_record = MetricRecord(metrics)
     content = RecordDict({"arrays": model_record, "metrics": metric_record})
@@ -82,53 +78,37 @@ def train(msg: Message, context: Context):
 
 @app.evaluate()
 def evaluate(msg: Message, context: Context):
-    """Evaluate the KMeans model on local data."""
+    """Evaluate the MLP model on local CIFAR-10 test data."""
 
-    # Get number of clusters from config
-    n_clusters = context.run_config.get("n-clusters", N_CLUSTERS)
-
-    # Get received cluster centers
+    # Get received model parameters
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
-    init_centers = ndarrays[0] if len(ndarrays) > 0 else None
 
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     X_train, X_test, y_train, y_test = load_data(partition_id, num_partitions)
 
-    # Create KMeans model with received centers and fit on test data
-    # to get proper internal state for predictions
-    model = create_kmeans_model(n_clusters, init_centers)
-    model.fit(X_test)
+    # Create MLP model and set parameters
+    model = create_mlp_model()
+    if len(ndarrays) > 0:
+        set_model_params(model, ndarrays)
 
-    # Get cluster assignments for test data
-    test_labels = model.labels_
+    # Evaluate on test data
+    y_test_pred = model.predict(X_test)
+    test_accuracy = accuracy_score(y_test, y_test_pred)
 
-    # Compute clustering metrics on test data
-    clustering_metrics = evaluate_clustering(X_test, test_labels)
-
-    # Compute inertia on test data
-    inertia = compute_inertia(X_test, model)
-
-    # Compute cluster distribution on test data
-    cluster_dist = compute_cluster_distribution(test_labels, n_clusters)
+    try:
+        y_test_proba = model.predict_proba(X_test)
+        test_loss = log_loss(y_test, y_test_proba)
+    except:
+        test_loss = 0.0
 
     # Construct and return reply Message
     metrics = {
         "num-examples": len(X_test),
-        "inertia": inertia,
-        "silhouette_score": clustering_metrics.get("silhouette_score", -1.0),
-        "calinski_harabasz_score": clustering_metrics.get(
-            "calinski_harabasz_score", 0.0
-        ),
-        "davies_bouldin_score": clustering_metrics.get(
-            "davies_bouldin_score", float("inf")
-        ),
+        "test_accuracy": float(test_accuracy),
+        "test_loss": float(test_loss),
     }
-
-    # Add cluster distribution to metrics
-    for i in range(n_clusters):
-        metrics[f"cluster_{i}_ratio"] = float(cluster_dist[i])
 
     metric_record = MetricRecord(metrics)
     content = RecordDict({"metrics": metric_record})

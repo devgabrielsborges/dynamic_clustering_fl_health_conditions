@@ -1,203 +1,142 @@
-"""dynamic_clustering_fl: Task definitions for clustered federated learning with sklearn."""
+"""dynamic_clustering_fl: Task definitions for clustered federated learning with CIFAR-10."""
 
 import numpy as np
 from flwr.common import NDArrays
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
-from sklearn.cluster import KMeans
-from sklearn.metrics import (
-    silhouette_score,
-    calinski_harabasz_score,
-    davies_bouldin_score,
-)
+from sklearn.neural_network import MLPClassifier
 
-# Configuration for clustering
-N_CLUSTERS = 3  # Default number of clusters
-FEATURES = ["petal_length", "petal_width", "sepal_length", "sepal_width"]
+# Configuration for CIFAR-10
+INPUT_SIZE = 32 * 32 * 3  # CIFAR-10 images are 32x32 RGB
+NUM_CLASSES = 10
+HIDDEN_LAYERS = (128, 64)
 
 
-def get_model_params(model: KMeans) -> NDArrays:
-    """Return the parameters of a sklearn KMeans model."""
-    params = [
-        model.cluster_centers_,
-    ]
+def get_model_params(model: MLPClassifier) -> NDArrays:
+    """Return the parameters of a sklearn MLPClassifier model."""
+    params = []
+    # Add all coefficient layers
+    for coef in model.coefs_:
+        params.append(coef)
+    # Add all bias/intercept layers
+    for intercept in model.intercepts_:
+        params.append(intercept)
     return params
 
 
-def set_model_params(model: KMeans, params: NDArrays) -> KMeans:
-    """Set the parameters of a sklearn KMeans model."""
-    if len(params) > 0:
-        model.cluster_centers_ = params[0]
+def set_model_params(model: MLPClassifier, params: NDArrays) -> MLPClassifier:
+    """Set the parameters of a sklearn MLPClassifier model."""
+    # Check if model has been fitted (has coefs_ attribute)
+    if not hasattr(model, "coefs_"):
+        # Initialize model structure using partial_fit with all classes
+        dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
+        dummy_y = np.arange(NUM_CLASSES)  # One sample per class [0,1,2,...,9]
+        model.partial_fit(dummy_X, dummy_y, classes=np.arange(NUM_CLASSES))
+
+    n_layers = len(model.coefs_)
+    model.coefs_ = [p.copy() for p in params[:n_layers]]
+    model.intercepts_ = [p.copy() for p in params[n_layers:]]
     return model
 
 
-def get_initial_centers(n_clusters: int, n_features: int) -> np.ndarray:
-    """Generate initial cluster centers."""
-    np.random.seed(42)
-    return np.random.randn(n_clusters, n_features).astype(np.float64)
-
-
-def create_kmeans_model(
-    n_clusters: int = N_CLUSTERS,
-    init_centers: np.ndarray = None,
-) -> KMeans:
-    """Create a KMeans model with optional initial centers."""
-    if init_centers is not None:
-        model = KMeans(
-            n_clusters=n_clusters,
-            init=init_centers,
-            n_init=1,
-            max_iter=10,
-            random_state=42,
-        )
-    else:
-        model = KMeans(
-            n_clusters=n_clusters,
-            init="k-means++",
-            n_init=1,
-            max_iter=10,
-            random_state=42,
-        )
+def create_mlp_model(hidden_layers: tuple = HIDDEN_LAYERS) -> MLPClassifier:
+    """Create an MLPClassifier for CIFAR-10 classification."""
+    model = MLPClassifier(
+        hidden_layer_sizes=hidden_layers,
+        activation="relu",
+        solver="sgd",  # SGD works better with partial_fit
+        alpha=0.0001,
+        batch_size=64,
+        learning_rate="adaptive",
+        learning_rate_init=0.01,
+        max_iter=10,  # More iterations per fit call
+        random_state=42,
+        warm_start=True,  # Continue from previous weights
+        verbose=False,
+    )
     return model
 
 
-def create_initial_model(n_clusters: int = N_CLUSTERS) -> KMeans:
-    """Create and fit an initial KMeans model with random centers.
+def create_initial_model() -> MLPClassifier:
+    """Create and initialize an MLPClassifier model.
 
     This is used by the server to create initial parameters.
     """
-    init_centers = get_initial_centers(n_clusters, len(FEATURES))
-    model = create_kmeans_model(n_clusters, init_centers)
-    # Fit on dummy data to initialize internal state
-    model.fit(init_centers)
+    model = create_mlp_model()
+    # Initialize with dummy data using partial_fit to specify all classes
+    dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
+    dummy_y = np.arange(NUM_CLASSES)  # [0, 1, 2, ..., 9]
+    model.partial_fit(dummy_X, dummy_y, classes=np.arange(NUM_CLASSES))
     return model
-
-
-def evaluate_clustering(X: np.ndarray, labels: np.ndarray) -> dict:
-    """Evaluate clustering quality using multiple metrics.
-
-    Args:
-        X: Feature matrix
-        labels: Cluster labels
-
-    Returns:
-        Dictionary with clustering metrics
-    """
-    metrics = {}
-
-    # Only compute metrics if we have more than one cluster and enough samples
-    n_unique_labels = len(np.unique(labels))
-    if n_unique_labels > 1 and len(X) > n_unique_labels:
-        try:
-            metrics["silhouette_score"] = float(silhouette_score(X, labels))
-        except Exception:
-            metrics["silhouette_score"] = -1.0
-
-        try:
-            metrics["calinski_harabasz_score"] = float(
-                calinski_harabasz_score(X, labels)
-            )
-        except Exception:
-            metrics["calinski_harabasz_score"] = 0.0
-
-        try:
-            metrics["davies_bouldin_score"] = float(davies_bouldin_score(X, labels))
-        except Exception:
-            metrics["davies_bouldin_score"] = float("inf")
-    else:
-        metrics["silhouette_score"] = -1.0
-        metrics["calinski_harabasz_score"] = 0.0
-        metrics["davies_bouldin_score"] = float("inf")
-
-    return metrics
-
-
-def compute_inertia(X: np.ndarray, model: KMeans) -> float:
-    """Compute inertia (within-cluster sum of squares) for the model.
-
-    Args:
-        X: Feature matrix
-        model: Fitted KMeans model
-
-    Returns:
-        Inertia value
-    """
-    labels = model.predict(X)
-    centers = model.cluster_centers_
-    inertia = 0.0
-    for i, center in enumerate(centers):
-        cluster_points = X[labels == i]
-        if len(cluster_points) > 0:
-            inertia += np.sum((cluster_points - center) ** 2)
-    return float(inertia)
 
 
 fds = None  # Cache FederatedDataset
 
 
 def load_data(partition_id: int, num_partitions: int):
-    """Load the data for the given partition."""
+    """Load CIFAR-10 data for the given partition."""
     global fds
     if fds is None:
         partitioner = IidPartitioner(num_partitions=num_partitions)
         fds = FederatedDataset(
-            dataset="hitorilabs/iris", partitioners={"train": partitioner}
+            dataset="uoft-cs/cifar10", partitioners={"train": partitioner}
         )
-    dataset = fds.load_partition(partition_id, "train").with_format("pandas")[:]
-    X = dataset[FEATURES]
 
-    # For unsupervised learning, we don't use labels for training
-    # but we can use them for evaluation if available
-    y = dataset.get("species", None)
+    # Load partition for this client
+    partition = fds.load_partition(partition_id, "train")
 
-    # Split the on-edge data: 80% train, 20% test
-    X_train, X_test = X[: int(0.8 * len(X))], X[int(0.8 * len(X)) :]
+    # Split into train and test
+    partition_train_test = partition.train_test_split(test_size=0.2, seed=42)
 
-    if y is not None:
-        y_train, y_test = y[: int(0.8 * len(y))], y[int(0.8 * len(y)) :]
-        return X_train.values, X_test.values, y_train.values, y_test.values
+    # Extract features and labels
+    X_train = np.array(
+        [np.array(img).flatten() for img in partition_train_test["train"]["img"]]
+    )
+    y_train = np.array(partition_train_test["train"]["label"])
+    X_test = np.array(
+        [np.array(img).flatten() for img in partition_train_test["test"]["img"]]
+    )
+    y_test = np.array(partition_train_test["test"]["label"])
 
-    return X_train.values, X_test.values, None, None
+    # Normalize pixel values to [0, 1]
+    X_train = X_train.astype(np.float32) / 255.0
+    X_test = X_test.astype(np.float32) / 255.0
+
+    return X_train, X_test, y_train, y_test
 
 
-def compute_cluster_distribution(labels: np.ndarray, n_clusters: int) -> np.ndarray:
-    """Compute the distribution of samples across clusters.
+def flatten_params(params: NDArrays) -> np.ndarray:
+    """Flatten model parameters into a single vector for clustering analysis."""
+    return np.concatenate([p.flatten() for p in params])
+
+
+def compute_param_distance(params1: NDArrays, params2: NDArrays) -> float:
+    """Compute Euclidean distance between two sets of model parameters."""
+    vec1 = flatten_params(params1)
+    vec2 = flatten_params(params2)
+    return float(np.linalg.norm(vec1 - vec2))
+
+
+def aggregate_weighted(params_list: list[NDArrays], weights: list[float]) -> NDArrays:
+    """Aggregate model parameters using weighted averaging.
 
     Args:
-        labels: Cluster assignments
-        n_clusters: Number of clusters
+        params_list: List of model parameters from different clients
+        weights: Weights for each client (typically based on dataset size)
 
     Returns:
-        Array with proportion of samples in each cluster
+        Aggregated parameters
     """
-    distribution = np.zeros(n_clusters)
-    for i in range(n_clusters):
-        distribution[i] = np.sum(labels == i) / len(labels)
-    return distribution
-
-
-def aggregate_cluster_centers(
-    centers_list: list[np.ndarray], weights: list[float] = None
-) -> np.ndarray:
-    """Aggregate cluster centers from multiple models.
-
-    Args:
-        centers_list: List of cluster center arrays
-        weights: Optional weights for weighted averaging
-
-    Returns:
-        Aggregated cluster centers
-    """
-    if weights is None:
-        weights = [1.0 / len(centers_list)] * len(centers_list)
-
     # Normalize weights
     total_weight = sum(weights)
-    weights = [w / total_weight for w in weights]
+    normalized_weights = [w / total_weight for w in weights]
 
-    # Weighted average of centers
-    aggregated = np.zeros_like(centers_list[0])
-    for centers, weight in zip(centers_list, weights):
-        aggregated += centers * weight
+    # Initialize aggregated params with zeros
+    aggregated = [np.zeros_like(p) for p in params_list[0]]
+
+    # Weighted sum
+    for params, weight in zip(params_list, normalized_weights):
+        for i, p in enumerate(params):
+            aggregated[i] += p * weight
 
     return aggregated

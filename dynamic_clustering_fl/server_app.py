@@ -1,19 +1,25 @@
-"""dynamic_clustering_fl: A Flower / sklearn app with clustered federated learning."""
+"""dynamic_clustering_fl: A Flower / sklearn app with clustered federated learning for CIFAR-10."""
 
 import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
+from typing import List, Tuple, Dict, Optional
+from sklearn.cluster import KMeans as SKLearnKMeans
+
 from flwr.app import ArrayRecord, Context, MetricRecord
+from flwr.common import NDArrays
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
 
 from dynamic_clustering_fl.task import (
-    N_CLUSTERS,
     create_initial_model,
-    create_kmeans_model,
+    create_mlp_model,
     get_model_params,
     set_model_params,
+    flatten_params,
+    aggregate_weighted,
+    compute_param_distance,
 )
 
 # Create ServerApp
@@ -23,6 +29,247 @@ app = ServerApp()
 _mlflow_run = None
 
 
+class ClusteredFedAvg(FedAvg):
+    """Federated Averaging strategy with client clustering based on model updates.
+
+    This strategy clusters clients based on the similarity of their model updates,
+    then performs hierarchical aggregation: first within clusters, then globally.
+    """
+
+    def __init__(
+        self,
+        n_client_clusters: int = 3,
+        clustering_round_interval: int = 5,
+        *args,
+        **kwargs,
+    ):
+        """Initialize ClusteredFedAvg strategy.
+
+        Args:
+            n_client_clusters: Number of clusters to group clients into
+            clustering_round_interval: How often to re-cluster clients (in rounds)
+        """
+        super().__init__(*args, **kwargs)
+        self.n_client_clusters = n_client_clusters
+        self.clustering_round_interval = clustering_round_interval
+        self.client_clusters: Dict[str, int] = {}  # client_id -> cluster_id
+        self.cluster_centers: Optional[NDArrays] = None
+
+    def aggregate_train(
+        self,
+        server_round: int,
+        results: List,
+    ) -> Tuple[Optional[ArrayRecord], MetricRecord]:
+        """Aggregate training results with client clustering.
+
+        Args:
+            server_round: Current round number
+            results: List of Message objects with training results
+
+        Returns:
+            Tuple of (ArrayRecord with aggregated parameters, MetricRecord with metrics)
+        """
+        if not results:
+            return None, MetricRecord({})
+
+        # Extract parameters and metrics from results
+        client_params = []
+        client_weights = []
+        client_ids = []
+
+        for i, result in enumerate(results):
+            params = result.content["arrays"].to_numpy_ndarrays()
+            num_examples = result.content["metrics"]["num-examples"]
+            client_params.append(params)
+            client_weights.append(num_examples)
+            client_ids.append(str(i))  # Use index as client ID
+
+        # Perform client clustering based on parameter similarity
+        if server_round % self.clustering_round_interval == 0 or server_round == 1:
+            self._cluster_clients(client_ids, client_params, server_round)
+
+        # Hierarchical aggregation: within-cluster then global
+        aggregated_params, metrics = self._hierarchical_aggregate(
+            client_ids, client_params, client_weights, server_round
+        )
+
+        # Convert to ArrayRecord and MetricRecord for Flower API
+        if aggregated_params is None:
+            return None, MetricRecord(metrics)
+
+        return ArrayRecord(aggregated_params), MetricRecord(metrics)
+
+    def _cluster_clients(
+        self, client_ids: List[str], client_params: List[NDArrays], server_round: int
+    ) -> None:
+        """Cluster clients based on their model parameter similarity.
+
+        Args:
+            client_ids: List of client IDs
+            client_params: List of model parameters from each client
+            server_round: Current round number
+        """
+        if len(client_ids) < self.n_client_clusters:
+            # Not enough clients to cluster, assign all to cluster 0
+            for cid in client_ids:
+                self.client_clusters[cid] = 0
+            return
+
+        # Flatten all parameters into feature vectors for clustering
+        param_vectors = np.array([flatten_params(params) for params in client_params])
+
+        # Perform K-means clustering on parameter space
+        kmeans = SKLearnKMeans(
+            n_clusters=self.n_client_clusters,
+            random_state=42,
+            n_init=10,
+        )
+        cluster_labels = kmeans.fit_predict(param_vectors)
+
+        # Update client cluster assignments
+        for cid, cluster_id in zip(client_ids, cluster_labels):
+            self.client_clusters[cid] = int(cluster_id)
+
+        # Store cluster centers for analysis
+        self.cluster_centers = kmeans.cluster_centers_
+
+        # Log clustering information
+        print(f"\n=== Round {server_round}: Client Clustering ===")
+        for cluster_id in range(self.n_client_clusters):
+            cluster_clients = [
+                cid
+                for cid, cid_cluster in self.client_clusters.items()
+                if cid_cluster == cluster_id
+            ]
+            print(
+                f"Cluster {cluster_id}: {len(cluster_clients)} clients - {cluster_clients}"
+            )
+
+        # Log to MLflow
+        if _mlflow_run is not None:
+            for cluster_id in range(self.n_client_clusters):
+                cluster_size = sum(
+                    1
+                    for cid_cluster in self.client_clusters.values()
+                    if cid_cluster == cluster_id
+                )
+                mlflow.log_metric(
+                    f"cluster_{cluster_id}_size", cluster_size, step=server_round
+                )
+
+    def _hierarchical_aggregate(
+        self,
+        client_ids: List[str],
+        client_params: List[NDArrays],
+        client_weights: List[float],
+        server_round: int,
+    ) -> Tuple[NDArrays, Dict[str, float]]:
+        """Perform hierarchical aggregation: within-cluster then global.
+
+        Args:
+            client_ids: List of client IDs
+            client_params: List of model parameters from each client
+            client_weights: List of weights (num examples) for each client
+            server_round: Current round number
+
+        Returns:
+            Aggregated parameters and metrics
+        """
+        # Group clients by cluster
+        cluster_groups: Dict[int, List[Tuple[NDArrays, float]]] = {
+            i: [] for i in range(self.n_client_clusters)
+        }
+
+        for cid, params, weight in zip(client_ids, client_params, client_weights):
+            cluster_id = self.client_clusters.get(cid, 0)
+            cluster_groups[cluster_id].append((params, weight))
+
+        # Step 1: Aggregate within each cluster
+        cluster_aggregates = []
+        cluster_total_weights = []
+
+        for cluster_id, cluster_data in cluster_groups.items():
+            if not cluster_data:
+                continue
+
+            params_list = [params for params, _ in cluster_data]
+            weights_list = [weight for _, weight in cluster_data]
+
+            # Aggregate within cluster
+            cluster_agg = aggregate_weighted(params_list, weights_list)
+            cluster_aggregates.append(cluster_agg)
+            cluster_total_weights.append(sum(weights_list))
+
+            print(
+                f"  Cluster {cluster_id}: {len(params_list)} clients, "
+                f"total weight: {sum(weights_list)}"
+            )
+
+        # Step 2: Global aggregation across clusters
+        if not cluster_aggregates:
+            return None, {}
+
+        global_aggregate = aggregate_weighted(cluster_aggregates, cluster_total_weights)
+
+        # Compute diversity metrics
+        metrics = self._compute_diversity_metrics(
+            cluster_aggregates, global_aggregate, server_round
+        )
+
+        return global_aggregate, metrics
+
+    def _compute_diversity_metrics(
+        self,
+        cluster_aggregates: List[NDArrays],
+        global_aggregate: NDArrays,
+        server_round: int,
+    ) -> Dict[str, float]:
+        """Compute diversity metrics for cluster aggregates.
+
+        Args:
+            cluster_aggregates: List of aggregated parameters from each cluster
+            global_aggregate: Global aggregated parameters
+            server_round: Current round number
+
+        Returns:
+            Dictionary of diversity metrics
+        """
+        if len(cluster_aggregates) < 2:
+            return {"cluster_diversity": 0.0}
+
+        # Compute average distance between cluster aggregates
+        total_dist = 0.0
+        count = 0
+        for i in range(len(cluster_aggregates)):
+            for j in range(i + 1, len(cluster_aggregates)):
+                dist = compute_param_distance(
+                    cluster_aggregates[i], cluster_aggregates[j]
+                )
+                total_dist += dist
+                count += 1
+
+        avg_cluster_dist = total_dist / count if count > 0 else 0.0
+
+        # Compute average distance from global aggregate
+        avg_dist_from_global = np.mean(
+            [
+                compute_param_distance(cluster_agg, global_aggregate)
+                for cluster_agg in cluster_aggregates
+            ]
+        )
+
+        metrics = {
+            "cluster_diversity": float(avg_cluster_dist),
+            "avg_dist_from_global": float(avg_dist_from_global),
+        }
+
+        # Log to MLflow
+        if _mlflow_run is not None:
+            mlflow.log_metrics(metrics, step=server_round)
+
+        return metrics
+
+
 @app.main()
 def main(grid: Grid, context: Context) -> None:
     """Main entry point for the ServerApp."""
@@ -30,34 +277,42 @@ def main(grid: Grid, context: Context) -> None:
 
     # Read run config
     num_rounds: int = context.run_config["num-server-rounds"]
-    n_clusters: int = context.run_config.get("n-clusters", N_CLUSTERS)
+    n_client_clusters: int = context.run_config.get("n-client-clusters", 3)
+    clustering_interval: int = context.run_config.get("clustering-interval", 5)
+    local_epochs: int = context.run_config.get("local-epochs", 3)
 
     # MLflow configs
     mlflow_experiment: str = context.run_config.get(
-        "mlflow-experiment-name", "dynamic-clustering-fl"
+        "mlflow-experiment-name", "dynamic-clustering-fl-cifar10"
     )
     mlflow_run_name: str = context.run_config.get(
-        "mlflow-run-name", f"fedavg_kmeans_{num_rounds}_rounds"
+        "mlflow-run-name", f"clustered_fedavg_{num_rounds}_rounds"
     )
 
     # Configure MLflow
     mlflow.set_experiment(mlflow_experiment)
     mlflow.config.enable_system_metrics_logging()
     mlflow.config.set_system_metrics_sampling_interval(1)
-    mlflow.sklearn.autolog(log_models=False)  # Auto-log sklearn metrics
+    mlflow.sklearn.autolog(log_models=False)
 
-    # Create initial KMeans Model
-    model = create_initial_model(n_clusters)
+    # Create initial MLP model for CIFAR-10
+    print("Initializing global model for CIFAR-10 classification...")
+    model = create_initial_model()
 
     # Construct ArrayRecord representation
     arrays = ArrayRecord(get_model_params(model))
 
-    # Initialize FedAvg strategy
-    strategy = FedAvg(fraction_train=1.0, fraction_evaluate=1.0)
+    # Initialize ClusteredFedAvg strategy
+    strategy = ClusteredFedAvg(
+        n_client_clusters=n_client_clusters,
+        clustering_round_interval=clustering_interval,
+        fraction_train=1.0,
+        fraction_evaluate=1.0,
+    )
 
-    # Define evaluation function with closure for n_clusters
+    # Define evaluation function
     def evaluate_fn(server_round, arrays):
-        return global_evaluate(server_round, arrays, n_clusters)
+        return global_evaluate(server_round, arrays)
 
     # Start MLflow run
     with mlflow.start_run(run_name=mlflow_run_name) as run:
@@ -67,13 +322,17 @@ def main(grid: Grid, context: Context) -> None:
         mlflow.log_params(
             {
                 "num_rounds": num_rounds,
-                "n_clusters": n_clusters,
-                "strategy": "FedAvg",
-                "model_type": "KMeans",
+                "n_client_clusters": n_client_clusters,
+                "clustering_interval": clustering_interval,
+                "local_epochs": local_epochs,
+                "strategy": "ClusteredFedAvg",
+                "model_type": "MLPClassifier",
+                "task": "CIFAR-10",
             }
         )
 
-        # Start strategy, run FedAvg for `num_rounds`
+        # Start strategy, run ClusteredFedAvg for `num_rounds`
+        print(f"\nStarting Clustered Federated Learning for {num_rounds} rounds...")
         result = strategy.start(
             grid=grid,
             initial_arrays=arrays,
@@ -86,23 +345,14 @@ def main(grid: Grid, context: Context) -> None:
         ndarrays = result.arrays.to_numpy_ndarrays()
         if len(ndarrays) > 0:
             # Create a properly fitted model for saving
-            final_model = create_kmeans_model(n_clusters, ndarrays[0])
-            final_model.fit(ndarrays[0])  # Fit on centers to initialize
+            final_model = create_mlp_model()
             set_model_params(final_model, ndarrays)
-            joblib.dump(final_model, "kmeans_model.pkl")
+            joblib.dump(final_model, "mlp_model.pkl")
 
             # Log the final model to MLflow
-            mlflow.sklearn.log_model(final_model, "final_kmeans_model")
+            mlflow.sklearn.log_model(final_model, "final_mlp_model")
 
-            # Log final cluster centers as artifact
-            np.save("cluster_centers.npy", final_model.cluster_centers_)
-            mlflow.log_artifact("cluster_centers.npy")
-
-            # Print final cluster centers
-            print(
-                f"\nFinal cluster centers shape: {final_model.cluster_centers_.shape}"
-            )
-            print(f"Cluster centers:\n{final_model.cluster_centers_}")
+            print(f"\nFinal model saved with {len(ndarrays)} parameter arrays")
         else:
             print("No model parameters received from clients.")
 
@@ -110,59 +360,13 @@ def main(grid: Grid, context: Context) -> None:
 
 
 def global_evaluate(
-    server_round: int, arrays: ArrayRecord, n_clusters: int
+    server_round: int,
+    arrays: ArrayRecord,
 ) -> MetricRecord:
-    """Evaluate the global clustering model.
+    """Evaluate the global model.
 
-    Since this is unsupervised learning, we evaluate based on
-    clustering quality metrics computed from aggregated client metrics.
+    Since we don't have centralized test data, we aggregate client metrics.
     """
-    ndarrays = arrays.to_numpy_ndarrays()
-
-    if len(ndarrays) == 0:
-        return MetricRecord(
-            {
-                "avg_inter_cluster_dist": 0.0,
-                "avg_dist_from_origin": 0.0,
-            }
-        )
-
-    # Get cluster centers directly from the array
-    centers = ndarrays[0]
-
-    # Average distance between cluster centers (higher is better for separation)
-    n_centers = len(centers)
-    total_dist = 0.0
-    count = 0
-    for i in range(n_centers):
-        for j in range(i + 1, n_centers):
-            total_dist += float(np.linalg.norm(centers[i] - centers[j]))
-            count += 1
-
-    avg_inter_cluster_dist = float(total_dist / count) if count > 0 else 0.0
-
-    # Compute average distance from origin (spread of clusters)
-    avg_dist_from_origin = float(np.mean([np.linalg.norm(c) for c in centers]))
-
-    print(
-        f"\nRound {server_round} - Global clustering metrics: "
-        f"avg_inter_cluster_dist: {avg_inter_cluster_dist:.4f}, "
-        f"avg_dist_from_origin: {avg_dist_from_origin:.4f}"
-    )
-
-    # Log metrics to MLflow
-    if _mlflow_run is not None:
-        mlflow.log_metrics(
-            {
-                "global_avg_inter_cluster_dist": avg_inter_cluster_dist,
-                "global_avg_dist_from_origin": avg_dist_from_origin,
-            },
-            step=server_round,
-        )
-
-    return MetricRecord(
-        {
-            "avg_inter_cluster_dist": avg_inter_cluster_dist,
-            "avg_dist_from_origin": avg_dist_from_origin,
-        }
-    )
+    # For now, just return empty metrics
+    # In practice, you could maintain a validation set on the server
+    return MetricRecord({})
