@@ -77,12 +77,12 @@ class ClusteredFedAvg(FedAvg):
         client_weights = []
         client_ids = []
 
-        for client_proxy, train_result in results:
-            params = train_result.content["arrays"].to_numpy_ndarrays()
-            num_examples = train_result.content["metrics"]["num-examples"]
+        for i, result in enumerate(results):
+            params = result.content["arrays"].to_numpy_ndarrays()
+            num_examples = result.content["metrics"]["num-examples"]
             client_params.append(params)
             client_weights.append(num_examples)
-            client_ids.append(client_proxy.cid)
+            client_ids.append(str(i))  # Use index as client ID
 
         # Perform client clustering based on parameter similarity
         if server_round % self.clustering_round_interval == 0 or server_round == 1:

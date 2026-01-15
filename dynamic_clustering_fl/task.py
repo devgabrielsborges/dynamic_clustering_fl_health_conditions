@@ -29,8 +29,9 @@ def set_model_params(model: MLPClassifier, params: NDArrays) -> MLPClassifier:
     # Check if model has been fitted (has coefs_ attribute)
     if not hasattr(model, "coefs_"):
         # Initialize model structure by fitting on dummy data
-        dummy_X = np.random.randn(10, INPUT_SIZE).astype(np.float32)
-        dummy_y = np.random.randint(0, NUM_CLASSES, 10)
+        # Ensure we have at least one sample per class to avoid class mismatch
+        dummy_X = np.random.randn(NUM_CLASSES, INPUT_SIZE).astype(np.float32)
+        dummy_y = np.arange(NUM_CLASSES)  # One sample per class [0,1,2,...,9]
         model.fit(dummy_X, dummy_y)
 
     n_layers = len(model.coefs_)
@@ -51,7 +52,7 @@ def create_mlp_model(hidden_layers: tuple = HIDDEN_LAYERS) -> MLPClassifier:
         learning_rate_init=0.001,
         max_iter=1,  # We'll control training iterations via epochs
         random_state=42,
-        warm_start=True,  # Continue training from previous state
+        warm_start=False,  # Don't use warm_start to avoid class mismatch issues
         verbose=False,
     )
     return model
