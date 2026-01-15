@@ -5,14 +5,13 @@ import numpy as np
 
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
+from sklearn.metrics import accuracy_score, log_loss
 
 from dynamic_clustering_fl.task import (
     create_mlp_model,
     get_model_params,
     set_model_params,
     load_data,
-    accuracy_score,
-    log_loss,
 )
 
 # Flower ClientApp
