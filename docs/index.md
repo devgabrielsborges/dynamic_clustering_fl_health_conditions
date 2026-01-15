@@ -2,165 +2,66 @@
 icon: lucide/rocket
 ---
 
-# Get started
+# Dynamic Clustering FL
 
-For full documentation visit [zensical.org](https://zensical.org/docs/).
+A **dataset and model-agnostic** implementation of Clustered Federated Learning using [Flower](https://flower.ai/) and Domain-Driven Design (DDD) principles.
 
-## Commands
+## Features
 
-* [`zensical new`][new] - Create a new project
-* [`zensical serve`][serve] - Start local web server
-* [`zensical build`][build] - Build your site
+- :material-sync: **Dataset Agnostic** - Support for CIFAR-10, MNIST, Fashion-MNIST, CIFAR-100 (easily extensible)
+- :material-brain: **Model Agnostic** - MLP and Logistic Regression included (easily add more)
+- :material-chart-scatter-plot: **Dynamic Clustering** - Clients clustered based on model parameter similarity
+- :material-layers: **DDD Architecture** - Clean separation of domain, infrastructure, and application layers
+- :material-chart-line: **MLflow Integration** - Automatic experiment tracking and model logging
+- :material-console: **CLI Configuration** - Override any setting via command line
 
-  [new]: https://zensical.org/docs/usage/new/
-  [serve]: https://zensical.org/docs/usage/preview/
-  [build]: https://zensical.org/docs/usage/build/
+## Quick Start
 
-## Examples
+```bash
+# Install dependencies
+pip install -e .
 
-### Admonitions
+# Run with default settings (CIFAR-10, MLP)
+flwr run .
 
-> Go to [documentation](https://zensical.org/docs/authoring/admonitions/)
+# Run with MNIST dataset
+flwr run . --run-config "dataset='mnist'"
 
-!!! note
-
-    This is a **note** admonition. Use it to provide helpful information.
-
-!!! warning
-
-    This is a **warning** admonition. Be careful!
-
-### Details
-
-> Go to [documentation](https://zensical.org/docs/authoring/admonitions/#collapsible-blocks)
-
-??? info "Click to expand for more info"
-    
-    This content is hidden until you click to expand it.
-    Great for FAQs or long explanations.
-
-## Code Blocks
-
-> Go to [documentation](https://zensical.org/docs/authoring/code-blocks/)
-
-``` python hl_lines="2" title="Code blocks"
-def greet(name):
-    print(f"Hello, {name}!") # (1)!
-
-greet("Python")
+# Run with custom configuration
+flwr run . --run-config "dataset='fashion-mnist' model='mlp' num-server-rounds=20"
 ```
 
-1.  > Go to [documentation](https://zensical.org/docs/authoring/code-blocks/#code-annotations)
+## How It Works
 
-    Code annotations allow to attach notes to lines of code.
-
-Code can also be highlighted inline: `#!python print("Hello, Python!")`.
-
-## Content tabs
-
-> Go to [documentation](https://zensical.org/docs/authoring/content-tabs/)
-
-=== "Python"
-
-    ``` python
-    print("Hello from Python!")
-    ```
-
-=== "Rust"
-
-    ``` rs
-    println!("Hello from Rust!");
-    ```
-
-## Diagrams
-
-> Go to [documentation](https://zensical.org/docs/authoring/diagrams/)
-
-``` mermaid
-graph LR
-  A[Start] --> B{Error?};
-  B -->|Yes| C[Hmm...];
-  C --> D[Debug];
-  D --> B;
-  B ---->|No| E[Yay!];
+```mermaid
+graph TD
+    A[Server] -->|Initial Model| B[Clients]
+    B -->|Local Training| C[Client Updates]
+    C -->|Parameter Vectors| D[Clustering]
+    D -->|K-Means| E[Client Groups]
+    E -->|Within-Cluster Aggregation| F[Cluster Models]
+    F -->|Global Aggregation| A
 ```
 
-## Footnotes
+1. **Server** sends global model parameters to clients
+2. **Clients** train locally on their partitioned data
+3. **Clustering** groups clients based on model parameter similarity
+4. **Hierarchical Aggregation** first within clusters, then globally
+5. **Updated global model** sent back to clients
 
-> Go to [documentation](https://zensical.org/docs/authoring/footnotes/)
+## Installation
 
-Here's a sentence with a footnote.[^1]
+```bash
+# Clone the repository
+git clone https://github.com/your-username/dynamic_clustering_fl_health_conditions.git
+cd dynamic_clustering_fl_health_conditions
 
-Hover it, to see a tooltip.
+# Install in development mode
+pip install -e .
+```
 
-[^1]: This is the footnote.
+## Next Steps
 
-
-## Formatting
-
-> Go to [documentation](https://zensical.org/docs/authoring/formatting/)
-
-- ==This was marked (highlight)==
-- ^^This was inserted (underline)^^
-- ~~This was deleted (strikethrough)~~
-- H~2~O
-- A^T^A
-- ++ctrl+alt+del++
-
-## Icons, Emojis
-
-> Go to [documentation](https://zensical.org/docs/authoring/icons-emojis/)
-
-* :sparkles: `:sparkles:`
-* :rocket: `:rocket:`
-* :tada: `:tada:`
-* :memo: `:memo:`
-* :eyes: `:eyes:`
-
-## Maths
-
-> Go to [documentation](https://zensical.org/docs/authoring/math/)
-
-$$
-\cos x=\sum_{k=0}^{\infty}\frac{(-1)^k}{(2k)!}x^{2k}
-$$
-
-!!! warning "Needs configuration"
-    Note that MathJax is included via a `script` tag on this page and is not
-    configured in the generated default configuration to avoid including it
-    in a pages that do not need it. See the documentation for details on how
-    to configure it on all your pages if they are more Maths-heavy than these
-    simple starter pages.
-
-<script id="MathJax-script" async src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
-<script>
-  window.MathJax = {
-    tex: {
-      inlineMath: [["\\(", "\\)"]],
-      displayMath: [["\\[", "\\]"]],
-      processEscapes: true,
-      processEnvironments: true
-    },
-    options: {
-      ignoreHtmlClass: ".*|",
-      processHtmlClass: "arithmatex"
-    }
-  };
-</script>
-
-## Task Lists
-
-> Go to [documentation](https://zensical.org/docs/authoring/lists/#using-task-lists)
-
-* [x] Install Zensical
-* [x] Configure `zensical.toml`
-* [x] Write amazing documentation
-* [ ] Deploy anywhere
-
-## Tooltips
-
-> Go to [documentation](https://zensical.org/docs/authoring/tooltips/)
-
-[Hover me][example]
-
-  [example]: https://example.com "I'm a tooltip!"
+- [Configuration](configuration.md) - Learn about all available options
+- [Architecture](architecture.md) - Understand the DDD structure
+- [Extending](extending.md) - Add custom datasets and models
