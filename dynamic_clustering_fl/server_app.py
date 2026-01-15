@@ -36,6 +36,7 @@ from dynamic_clustering_fl.drift import (
     DriftTracker,
     create_drift_simulator,
 )
+from dynamic_clustering_fl.visualization import visualize_clusters
 
 # Create ServerApp
 app = ServerApp()
@@ -120,6 +121,25 @@ class ClusteredFedAvg(FedAvg):
                 mlflow.log_metric(
                     "reclustering_count", self.reclustering_count, step=server_round
                 )
+
+            # Generate cluster visualizations
+            try:
+                plot_files = visualize_clusters(
+                    client_params=client_params,
+                    cluster_assignments=self.clustering.client_clusters,
+                    server_round=server_round,
+                    output_dir="plots",
+                    method="both",
+                    n_clusters=self.clustering.n_clusters,
+                )
+                print(f"  Saved cluster visualizations: {plot_files}")
+
+                # Log as MLflow artifacts
+                if _mlflow_run is not None:
+                    for plot_file in plot_files:
+                        mlflow.log_artifact(plot_file, artifact_path="cluster_plots")
+            except Exception as e:
+                print(f"  Warning: Could not generate visualizations: {e}")
 
         # Store for next round comparison
         self.previous_params = client_params
