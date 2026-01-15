@@ -59,14 +59,12 @@ class ClusteredFedAvg(FedAvg):
         self,
         server_round: int,
         results: List[Tuple],
-        failures: List[Tuple],
     ) -> Tuple[Optional[NDArrays], Dict[str, float]]:
         """Aggregate training results with client clustering.
 
         Args:
             server_round: Current round number
             results: List of (client_proxy, train_result) tuples
-            failures: List of failed clients
 
         Returns:
             Aggregated parameters and metrics

@@ -5,7 +5,6 @@ from flwr.common import NDArrays
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, log_loss
 
 # Configuration for CIFAR-10
 INPUT_SIZE = 32 * 32 * 3  # CIFAR-10 images are 32x32 RGB
@@ -27,6 +26,13 @@ def get_model_params(model: MLPClassifier) -> NDArrays:
 
 def set_model_params(model: MLPClassifier, params: NDArrays) -> MLPClassifier:
     """Set the parameters of a sklearn MLPClassifier model."""
+    # Check if model has been fitted (has coefs_ attribute)
+    if not hasattr(model, "coefs_"):
+        # Initialize model structure by fitting on dummy data
+        dummy_X = np.random.randn(10, INPUT_SIZE).astype(np.float32)
+        dummy_y = np.random.randint(0, NUM_CLASSES, 10)
+        model.fit(dummy_X, dummy_y)
+
     n_layers = len(model.coefs_)
     model.coefs_ = params[:n_layers]
     model.intercepts_ = params[n_layers:]
