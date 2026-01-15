@@ -1,6 +1,7 @@
 """Visualization utilities for clustered federated learning.
 
 Provides cluster visualizations using PCA and t-SNE.
+All plots are automatically logged as MLflow artifacts when an active run exists.
 """
 
 import os
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import matplotlib.pyplot as plt
+import mlflow
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -17,6 +19,32 @@ from flwr.common import NDArrays
 from dynamic_clustering_fl.task import flatten_params
 
 
+def _log_figure_to_mlflow(
+    fig: plt.Figure,
+    artifact_path: str,
+    filename: str,
+) -> bool:
+    """Log a matplotlib figure to MLflow as an artifact.
+
+    Args:
+        fig: The matplotlib figure to log
+        artifact_path: The artifact subdirectory path in MLflow
+        filename: The filename for the artifact
+
+    Returns:
+        True if logging succeeded, False otherwise
+    """
+    if mlflow.active_run() is None:
+        return False
+
+    try:
+        mlflow.log_figure(fig, f"{artifact_path}/{filename}")
+        return True
+    except Exception as e:
+        print(f"  Warning: Could not log figure to MLflow: {e}")
+        return False
+
+
 def visualize_clusters(
     client_params: List[NDArrays],
     cluster_assignments: Dict[str, int],
@@ -24,6 +52,7 @@ def visualize_clusters(
     output_dir: str = "plots",
     method: str = "both",
     n_clusters: int = 3,
+    log_to_mlflow: bool = True,
 ) -> List[str]:
     """Visualize client clusters using dimensionality reduction.
 
@@ -34,6 +63,7 @@ def visualize_clusters(
         output_dir: Directory to save plots
         method: Visualization method ('pca', 'tsne', or 'both')
         n_clusters: Number of clusters for color mapping
+        log_to_mlflow: Whether to log plots as MLflow artifacts (default: True)
 
     Returns:
         List of paths to saved plot files
@@ -52,13 +82,13 @@ def visualize_clusters(
 
     if method in ("pca", "both"):
         pca_file = _plot_pca(
-            param_vectors, labels, server_round, output_dir, n_clusters
+            param_vectors, labels, server_round, output_dir, n_clusters, log_to_mlflow
         )
         saved_files.append(pca_file)
 
     if method in ("tsne", "both"):
         tsne_file = _plot_tsne(
-            param_vectors, labels, server_round, output_dir, n_clusters
+            param_vectors, labels, server_round, output_dir, n_clusters, log_to_mlflow
         )
         saved_files.append(tsne_file)
 
@@ -71,6 +101,7 @@ def _plot_pca(
     server_round: int,
     output_dir: str,
     n_clusters: int,
+    log_to_mlflow: bool = True,
 ) -> str:
     """Create PCA visualization of clusters."""
     # Apply PCA
@@ -115,8 +146,12 @@ def _plot_pca(
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
 
-    # Save plot
+    # Log to MLflow as artifact
     filename = f"clusters_pca_round_{server_round:03d}.png"
+    if log_to_mlflow:
+        _log_figure_to_mlflow(fig, "cluster_plots", filename)
+
+    # Save plot locally
     filepath = os.path.join(output_dir, filename)
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -130,6 +165,7 @@ def _plot_tsne(
     server_round: int,
     output_dir: str,
     n_clusters: int,
+    log_to_mlflow: bool = True,
     perplexity: float = 5.0,
 ) -> str:
     """Create t-SNE visualization of clusters."""
@@ -186,8 +222,12 @@ def _plot_tsne(
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
 
-    # Save plot
+    # Log to MLflow as artifact
     filename = f"clusters_tsne_round_{server_round:03d}.png"
+    if log_to_mlflow:
+        _log_figure_to_mlflow(fig, "cluster_plots", filename)
+
+    # Save plot locally
     filepath = os.path.join(output_dir, filename)
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -199,6 +239,7 @@ def create_clustering_summary_plot(
     cluster_history: List[Dict[str, int]],
     accuracy_history: List[float],
     output_dir: str = "plots",
+    log_to_mlflow: bool = True,
 ) -> str:
     """Create a summary plot showing clustering evolution and accuracy.
 
@@ -206,6 +247,7 @@ def create_clustering_summary_plot(
         cluster_history: List of cluster assignments per round
         accuracy_history: List of accuracy values per round
         output_dir: Directory to save plots
+        log_to_mlflow: Whether to log plots as MLflow artifacts (default: True)
 
     Returns:
         Path to saved plot file
@@ -253,8 +295,12 @@ def create_clustering_summary_plot(
 
     plt.tight_layout()
 
-    # Save plot
+    # Log to MLflow as artifact
     filename = "clustering_summary.png"
+    if log_to_mlflow:
+        _log_figure_to_mlflow(fig, "summary_plots", filename)
+
+    # Save plot locally
     filepath = os.path.join(output_dir, filename)
     plt.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)

@@ -122,7 +122,7 @@ class ClusteredFedAvg(FedAvg):
                     "reclustering_count", self.reclustering_count, step=server_round
                 )
 
-            # Generate cluster visualizations
+            # Generate cluster visualizations (automatically logged to MLflow)
             try:
                 plot_files = visualize_clusters(
                     client_params=client_params,
@@ -131,13 +131,9 @@ class ClusteredFedAvg(FedAvg):
                     output_dir="plots",
                     method="both",
                     n_clusters=self.clustering.n_clusters,
+                    log_to_mlflow=(_mlflow_run is not None),
                 )
                 print(f"  Saved cluster visualizations: {plot_files}")
-
-                # Log as MLflow artifacts
-                if _mlflow_run is not None:
-                    for plot_file in plot_files:
-                        mlflow.log_artifact(plot_file, artifact_path="cluster_plots")
             except Exception as e:
                 print(f"  Warning: Could not generate visualizations: {e}")
 
