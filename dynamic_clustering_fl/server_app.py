@@ -11,7 +11,6 @@ from flwr.app import ArrayRecord, Context, MetricRecord
 from flwr.common import NDArrays
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
-from flwr.clientproxy import Message
 
 from dynamic_clustering_fl.task import (
     create_initial_model,
