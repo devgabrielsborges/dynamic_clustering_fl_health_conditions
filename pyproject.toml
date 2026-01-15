@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "clustered-fl-sklearn"
+name = "clustered-fl-cifar10"
 version = "1.0.0"
-description = "Clustered Federated Learning with scikit-learn and Flower"
+description = "Clustered Federated Learning for CIFAR-10 with scikit-learn and Flower"
 license = "Apache-2.0"
 dependencies = [
     "flwr[simulation]>=1.25.0",
@@ -14,6 +14,7 @@ dependencies = [
     "numpy>=1.24.0",
     "joblib>=1.3.0",
     "mlflow>=2.10.0",
+    "pillow>=10.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -27,13 +28,15 @@ serverapp = "dynamic_clustering_fl.server_app:app"
 clientapp = "dynamic_clustering_fl.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 10
-n-clusters = 3
-mlflow-experiment-name = "dynamic-clustering-fl"
-mlflow-run-name = "fedavg-kmeans"
+num-server-rounds = 15
+n-client-clusters = 3
+clustering-interval = 5
+local-epochs = 3
+mlflow-experiment-name = "dynamic-clustering-fl-cifar10"
+mlflow-run-name = "clustered-fedavg-cifar10"
 
 [tool.flwr.federations]
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
-options.num-supernodes = 5
+options.num-supernodes = 10
