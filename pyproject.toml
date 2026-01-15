@@ -28,12 +28,30 @@ serverapp = "dynamic_clustering_fl.server_app:app"
 clientapp = "dynamic_clustering_fl.client_app:app"
 
 [tool.flwr.app.config]
+# Training configuration
 num-server-rounds = 15
+local-epochs = 5
+
+# Dataset and model
+dataset = "cifar10"
+model = "mlp"
+
+# Clustering configuration
+# Mode options: "static" (clusters once), "dynamic" (fixed intervals), "adaptive" (drift detection)
+clustering-mode = "dynamic"
 n-client-clusters = 3
 clustering-interval = 3
-local-epochs = 5
-mlflow-experiment-name = "dynamic-clustering-fl-cifar10"
-mlflow-run-name = "clustered-fedavg-cifar10"
+
+# Drift simulation configuration
+# Type options: "none", "sudden", "gradual", "recurrent", "incremental"
+drift-type = "none"
+drift-round = 10
+drift-magnitude = 0.5
+drift-threshold = 0.3
+
+# MLflow configuration (optional - auto-generated from config if not specified)
+# mlflow-experiment-name = "fl-clustering-cifar10-dynamic-drift_none"
+# mlflow-run-name = "dynamic_cifar10_k3_r15_driftnone_timestamp"
 
 [tool.flwr.federations]
 default = "local-simulation"
