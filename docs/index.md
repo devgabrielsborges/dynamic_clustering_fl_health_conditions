@@ -2,101 +2,159 @@
 icon: lucide/rocket
 ---
 
-# Get started
+# Dynamic Clustering Federated Learning
 
-For full documentation visit [zensical.org](https://zensical.org/docs/).
+A research framework for clustered federated learning with concept drift simulation.
 
-## Commands
+---
 
-* [`zensical new`][new] - Create a new project
-* [`zensical serve`][serve] - Start local web server
-* [`zensical build`][build] - Build your site
+## Overview
 
-  [new]: https://zensical.org/docs/usage/new/
-  [serve]: https://zensical.org/docs/usage/preview/
-  [build]: https://zensical.org/docs/usage/build/
+This project implements and compares different clustering strategies for Federated Learning, with support for simulating various types of concept drift.
 
-## Examples
+!!! info "Research Focus"
 
-### Admonitions
+    Evaluating adaptation strategies for federated learning in non-IID, dynamically changing data distributions — particularly relevant for health condition monitoring.
 
-> Go to [documentation](https://zensical.org/docs/authoring/admonitions/)
+---
 
-!!! note
+## Quick Start
 
-    This is a **note** admonition. Use it to provide helpful information.
+### Installation
 
-!!! warning
-
-    This is a **warning** admonition. Be careful!
-
-### Details
-
-> Go to [documentation](https://zensical.org/docs/authoring/admonitions/#collapsible-blocks)
-
-??? info "Click to expand for more info"
-    
-    This content is hidden until you click to expand it.
-    Great for FAQs or long explanations.
-
-## Code Blocks
-
-> Go to [documentation](https://zensical.org/docs/authoring/code-blocks/)
-
-``` python hl_lines="2" title="Code blocks"
-def greet(name):
-    print(f"Hello, {name}!") # (1)!
-
-greet("Python")
+```bash
+pip install -e .
 ```
 
-1.  > Go to [documentation](https://zensical.org/docs/authoring/code-blocks/#code-annotations)
+### Run Experiment
 
-    Code annotations allow to attach notes to lines of code.
+```bash
+# Basic run with default configuration
+flwr run .
 
-Code can also be highlighted inline: `#!python print("Hello, Python!")`.
-
-## Content tabs
-
-> Go to [documentation](https://zensical.org/docs/authoring/content-tabs/)
-
-=== "Python"
-
-    ``` python
-    print("Hello from Python!")
-    ```
-
-=== "Rust"
-
-    ``` rs
-    println!("Hello from Rust!");
-    ```
-
-## Diagrams
-
-> Go to [documentation](https://zensical.org/docs/authoring/diagrams/)
-
-``` mermaid
-graph LR
-  A[Start] --> B{Error?};
-  B -->|Yes| C[Hmm...];
-  C --> D[Debug];
-  D --> B;
-  B ---->|No| E[Yay!];
+# Custom configuration
+flwr run . --run-config "clustering-mode='adaptive' drift-type='sudden'"
 ```
 
-## Footnotes
+### View Results
 
-> Go to [documentation](https://zensical.org/docs/authoring/footnotes/)
+```bash
+mlflow ui
+# Navigate to http://localhost:5000
+```
 
-Here's a sentence with a footnote.[^1]
+---
 
-Hover it, to see a tooltip.
+## Key Features
 
-[^1]: This is the footnote.
+### Clustering Strategies
 
+| Strategy | Description |
+|----------|-------------|
+| **Static** | Baseline — clusters once, never adapts |
+| **Dynamic** | Re-clusters at fixed intervals |
+| **Adaptive** | Re-clusters when drift is detected |
 
-## Formatting
+### Drift Simulation
+
+| Type | Behavior |
+|------|----------|
+| `none` | Control condition |
+| `sudden` | Abrupt change |
+| `gradual` | Smooth transition |
+| `recurrent` | Periodic alternation |
+| `incremental` | Continuous evolution |
+
+---
+
+## Documentation
+
+<div class="grid cards" markdown>
+
+-   :material-cog:{ .lg .middle } **Configuration Reference**
+
+    ---
+
+    Complete API-style documentation for all parameters, constraints, and examples.
+
+    [:octicons-arrow-right-24: Configuration](configuration.md)
+
+-   :material-code-braces:{ .lg .middle } **API Reference**
+
+    ---
+
+    Programmatic interface documentation for all modules and functions.
+
+    [:octicons-arrow-right-24: API Reference](api-reference.md)
+
+</div>
+
+---
+
+## Supported Datasets
+
+| Dataset | Input Size | Classes | Source |
+|---------|------------|---------|--------|
+| `cifar10` | 32×32×3 | 10 | HuggingFace |
+| `cifar100` | 32×32×3 | 100 | HuggingFace |
+| `fashion_mnist` | 28×28 | 10 | HuggingFace |
+| `mnist` | 28×28 | 10 | HuggingFace |
+
+---
+
+## Example Configurations
+
+### Baseline Experiment
+
+```bash
+flwr run . --run-config "clustering-mode='static' drift-type='none'"
+```
+
+### Adaptive with Sudden Drift
+
+```bash
+flwr run . --run-config "clustering-mode='adaptive' drift-type='sudden' drift-round=10 drift-threshold=0.25"
+```
+
+### Dynamic with Gradual Drift
+
+```bash
+flwr run . --run-config "clustering-mode='dynamic' drift-type='gradual' clustering-interval=5"
+```
+
+---
+
+## Architecture
+
+```
+dynamic_clustering_fl/
+├── server_app.py     # ClusteredFedAvg strategy
+├── client_app.py     # Local training
+├── task.py           # Model & data utilities
+├── clustering.py     # Clustering strategies
+├── drift.py          # Drift simulators
+└── visualization.py  # MLflow-integrated plots
+```
+
+---
+
+## MLflow Integration
+
+All experiments are automatically tracked:
+
+- **Parameters**: Full configuration logged
+- **Metrics**: Cluster sizes, diversity, accuracy
+- **Artifacts**: PCA/t-SNE plots, trained models
+
+```bash
+mlflow ui
+```
+
+---
+
+## License
+
+Apache-2.0
 
 > Go to [documentation](https://zensical.org/docs/authoring/formatting/)
 
