@@ -93,7 +93,7 @@ class MLPModel(Model):
             learning_rate_init=learning_rate,
             max_iter=10,
             random_state=42,
-            warm_start=True,
+            warm_start=False,  # warm_start only affects fit(); partial_fit is inherently incremental
             verbose=False,
         )
 
@@ -199,18 +199,15 @@ class MLPModel(Model):
 
         This delegates to the underlying sklearn MLPClassifier's partial_fit.
 
-        Note: When using warm_start=True, sklearn requires all batches to
-        have the same classes. Always pass the `classes` parameter to ensure
-        sklearn knows the full class set, even if some classes are missing
-        from the current batch.
+        Note: partial_fit is inherently incremental and doesn't require
+        warm_start. The classes parameter informs sklearn of all possible
+        classes, even if some are missing from the current batch.
 
         Args:
             X: Training data.
             y: Target values.
-            classes: Full set of classes across all data. Required when using
-                warm_start to inform sklearn of all possible classes, even if
-                some are missing from the current batch. If None, uses the
-                classes from the already-fitted model.
+            classes: Full set of classes across all data. If None, uses the
+                classes from the already-fitted model. Required on first fit.
 
         Returns:
             self
@@ -218,8 +215,7 @@ class MLPModel(Model):
         Raises:
             ValueError: If model is not fitted and classes is not provided.
         """
-        # Always pass classes parameter when using warm_start to avoid
-        # sklearn's validation error when batch doesn't contain all classes
+        # Pass classes parameter to inform sklearn of all possible classes
         if classes is None:
             # Use the classes from the fitted model
             if hasattr(self._model, "classes_"):
