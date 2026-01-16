@@ -199,16 +199,18 @@ class MLPModel(Model):
 
         This delegates to the underlying sklearn MLPClassifier's partial_fit.
 
-        Note: Since MLPModel initializes the underlying model in __init__,
-        the model is always pre-fitted with all classes. The `classes`
-        parameter is ignored for already-fitted models to avoid sklearn's
-        warm_start class validation error.
+        Note: When using warm_start=True, sklearn requires all batches to
+        have the same classes. Always pass the `classes` parameter to ensure
+        sklearn knows the full class set, even if some classes are missing
+        from the current batch.
 
         Args:
             X: Training data.
             y: Target values.
-            classes: Classes for first fit only. Ignored if model is already
-                initialized. Required if model is not yet fitted.
+            classes: Full set of classes across all data. Required when using
+                warm_start to inform sklearn of all possible classes, even if
+                some are missing from the current batch. If None, uses the
+                classes from the already-fitted model.
 
         Returns:
             self
@@ -216,21 +218,22 @@ class MLPModel(Model):
         Raises:
             ValueError: If model is not fitted and classes is not provided.
         """
-        # Use cached fitted state to avoid redundant validation overhead
-        # Model is initialized as fitted in __init__ and remains fitted
-        if self._is_fitted:
-            # Model already initialized, don't pass classes to avoid
-            # sklearn's warm_start class validation error
-            self._model.partial_fit(X, y)
-        else:
-            # First fit - classes parameter is required
-            if classes is None:
+        # Always pass classes parameter when using warm_start to avoid
+        # sklearn's validation error when batch doesn't contain all classes
+        if classes is None:
+            # Use the classes from the fitted model
+            if hasattr(self._model, "classes_"):
+                classes = self._model.classes_
+            else:
                 raise ValueError(
                     "classes parameter is required on the first call to partial_fit "
                     "when the underlying model is not yet fitted. Provide the "
                     "'classes' argument on the first partial_fit call or ensure the "
                     "model was initialized with valid class labels before training."
                 )
+
+        self._model.partial_fit(X, y, classes=classes)
+        self._is_fitted = True
 
         return self
 
