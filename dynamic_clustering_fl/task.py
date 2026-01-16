@@ -91,7 +91,7 @@ def create_mlp_model(
 
 
 def create_initial_model(
-    dataset_name: str,
+    dataset: str,
     model_name: str = "mlp",
     hidden_layers: tuple[int, ...] = (128, 64),
     learning_rate: float = 0.01,
@@ -99,7 +99,7 @@ def create_initial_model(
     """Create an initial model for federated learning.
 
     Args:
-        dataset_name: Name of the dataset.
+        dataset: Name of the dataset.
         model_name: Name of the model type.
         hidden_layers: Hidden layer sizes for MLP.
         learning_rate: Learning rate.
@@ -107,7 +107,7 @@ def create_initial_model(
     Returns:
         Configured model.
     """
-    config = get_dataset_config(dataset_name)
+    config = get_dataset_config(dataset)
 
     if model_name.lower() == "mlp":
         return create_mlp_model(
