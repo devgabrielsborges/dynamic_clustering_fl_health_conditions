@@ -7,8 +7,10 @@ from typing import Any, Dict, Type
 
 import joblib
 import numpy as np
+
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.neural_network import MLPClassifier
+
 
 from flwr.common import NDArrays
 
@@ -97,6 +99,8 @@ class MLPModel(Model):
 
         # Initialize model structure
         self._initialize_model()
+        # Cache fitted state to avoid redundant checks in partial_fit
+        self._is_fitted = True
 
     def _initialize_model(self) -> None:
         """Initialize model weights with dummy data."""
@@ -195,25 +199,39 @@ class MLPModel(Model):
 
         This delegates to the underlying sklearn MLPClassifier's partial_fit.
 
+        Note: Since MLPModel initializes the underlying model in __init__,
+        the model is always pre-fitted with all classes. The `classes`
+        parameter is ignored for already-fitted models to avoid sklearn's
+        warm_start class validation error.
+
         Args:
             X: Training data.
             y: Target values.
-            classes: Classes across all calls to partial_fit.
+            classes: Classes for first fit only. Ignored if model is already
+                initialized. Required if model is not yet fitted.
 
         Returns:
             self
+
+        Raises:
+            ValueError: If model is not fitted and classes is not provided.
         """
-        if classes is None:
-            # Reuse previously stored classes if available; otherwise infer from y.
-            if hasattr(self, "_classes"):
-                classes = self._classes
-            else:
-                classes = np.unique(y)
-                self._classes = classes
+        # Use cached fitted state to avoid redundant validation overhead
+        # Model is initialized as fitted in __init__ and remains fitted
+        if self._is_fitted:
+            # Model already initialized, don't pass classes to avoid
+            # sklearn's warm_start class validation error
+            self._model.partial_fit(X, y)
         else:
-            # Store explicitly provided classes for consistency across calls.
-            self._classes = classes
-        self._model.partial_fit(X, y, classes=classes)
+            # First fit - classes parameter is required
+            if classes is None:
+                raise ValueError(
+                    "classes parameter is required on the first call to partial_fit "
+                    "when the underlying model is not yet fitted. Provide the "
+                    "'classes' argument on the first partial_fit call or ensure the "
+                    "model was initialized with valid class labels before training."
+                )
+
         return self
 
     @property
