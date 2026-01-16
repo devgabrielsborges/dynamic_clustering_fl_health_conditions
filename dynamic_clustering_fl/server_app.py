@@ -6,6 +6,7 @@ Supports:
 - Adaptive clustering: Concept drift detection with adaptive re-clustering
 """
 
+import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
@@ -248,18 +249,7 @@ class ClusteredFedAvg(FedAvg):
         if _mlflow_run is not None:
             mlflow.log_metrics(metrics, step=server_round)
 
-            # Log cluster sizes
-            for cluster_id in range(self.clustering.n_clusters):
-                cluster_size = sum(
-                    1
-                    for cid in client_ids
-                    if self.clustering.get_cluster_assignment(cid) == cluster_id
-                )
-                mlflow.log_metric(
-                    f"cluster_{cluster_id}_size", cluster_size, step=server_round
-                )
-
-        return ArrayRecord(aggregated_params), MetricRecord(metrics)
+        return metrics
 
 
 def generate_experiment_name(config: dict) -> str:
