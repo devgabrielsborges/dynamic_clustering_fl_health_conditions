@@ -2,6 +2,7 @@
 
 import warnings
 import numpy as np
+from sklearn.metrics import accuracy_score, log_loss
 
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
