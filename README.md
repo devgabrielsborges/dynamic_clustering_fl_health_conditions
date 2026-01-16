@@ -1,147 +1,240 @@
 # Dynamic Clustering Federated Learning
 
-A **dataset and model-agnostic** implementation of Clustered Federated Learning using [Flower](https://flower.ai/) and Domain-Driven Design (DDD) principles.
+Dynamic Clustering Federated Learning in Concept Drift Scenarios on Health Conditions.
 
-## Features
+## Overview
 
-- **Dataset Agnostic**: Support for CIFAR-10, MNIST, Fashion-MNIST, CIFAR-100 (easily extensible)
-- **Model Agnostic**: MLP and Logistic Regression included (easily add more)
-- **Dynamic Clustering**: Clients are clustered based on model parameter similarity
-- **DDD Architecture**: Clean separation of domain, infrastructure, and application layers
-- **MLflow Integration**: Automatic experiment tracking and model logging
-- **CLI Configuration**: Override any setting via command line
+This project implements a research framework for comparing different clustering strategies in Federated Learning, with support for simulating and handling concept drift scenarios.
 
-## Quick Start
+### Clustering Strategies
+
+1. **Static Clustering (Baseline)**: Clusters are defined once at the beginning and remain fixed throughout training
+2. **Dynamic Clustering**: Re-clustering occurs at fixed intervals regardless of data distribution
+3. **Adaptive Clustering**: Concept drift detection triggers re-clustering only when needed
+
+### Concept Drift Types
+
+- **None**: No drift simulation (control)
+- **Sudden**: Abrupt change at a specific round
+- **Gradual**: Progressive transition between distributions
+- **Recurrent**: Cyclical pattern of distribution changes
+- **Incremental**: Slow, continuous drift over time
+
+## Installation
 
 ```bash
-# Install dependencies
 pip install -e .
-
-# Run with default settings (CIFAR-10, MLP)
-flwr run .
-
-# Run with MNIST dataset
-flwr run . --run-config "dataset='mnist'"
-
-# Run with custom configuration
-flwr run . --run-config "dataset='fashion-mnist' model='mlp' num-server-rounds=20 n-client-clusters=5"
 ```
 
-## Configuration Options
+## Usage
 
-All options can be set in `pyproject.toml` or overridden via `--run-config`:
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `dataset` | `cifar10` | Dataset to use (`cifar10`, `mnist`, `fashion-mnist`, `cifar100`) |
-| `model` | `mlp` | Model architecture (`mlp`, `logistic`) |
-| `num-server-rounds` | `15` | Number of federated learning rounds |
-| `local-epochs` | `5` | Training epochs per client per round |
-| `num-partitions` | `10` | Number of data partitions (clients) |
-| `n-client-clusters` | `3` | Number of clusters for client grouping |
-| `clustering-interval` | `3` | Rounds between re-clustering |
-| `hidden-layers` | `128,64` | MLP hidden layer sizes (comma-separated) |
-| `learning-rate` | `0.01` | Model learning rate |
-
-## Examples
+### Basic Run
 
 ```bash
-# Quick test with fewer rounds
-flwr run . --run-config "num-server-rounds=3 local-epochs=2"
-
-# More clients with more clusters
-flwr run . --run-config "num-partitions=20 n-client-clusters=5"
-
-# Use logistic regression on MNIST
-flwr run . --run-config "dataset='mnist' model='logistic'"
-
-# Larger MLP for CIFAR-100
-flwr run . --run-config "dataset='cifar100' hidden-layers='256,128,64'"
+flwr run .
 ```
 
-## Project Structure
+### Configuration Options
+
+All options can be set in `pyproject.toml` or via command line:
+
+```bash
+# Run with static clustering (baseline)
+flwr run . --run-config "clustering-mode='static'"
+
+# Run with adaptive clustering and sudden drift
+flwr run . --run-config "clustering-mode='adaptive' drift-type='sudden' drift-round=10"
+
+# Run comparative experiment
+flwr run . --run-config "clustering-mode='dynamic' drift-type='gradual' n-client-clusters=5"
+```
+
+---
+
+## Configuration Reference (API Documentation)
+
+### Training Configuration
+
+| Parameter | Type | Default | Constraints | Description |
+|-----------|------|---------|-------------|-------------|
+| `num-server-rounds` | `int` | `15` | `≥ 1` | Number of federated learning training rounds |
+| `local-epochs` | `int` | `5` | `≥ 1` | Number of local training epochs per client per round |
+
+### Dataset & Model Configuration
+
+| Parameter | Type | Default | Allowed Values | Description |
+|-----------|------|---------|----------------|-------------|
+| `dataset` | `str` | `"cifar10"` | `cifar10`, `cifar100`, `fashion_mnist`, `mnist` | Dataset to use for training |
+| `model` | `str` | `"mlp"` | `mlp` | Model architecture (currently MLP only) |
+
+#### Dataset Details
+
+| Dataset | Input Size | Classes | HuggingFace Source |
+|---------|------------|---------|-------------------|
+| `cifar10` | 3072 (32×32×3) | 10 | `uoft-cs/cifar10` |
+| `cifar100` | 3072 (32×32×3) | 100 | `uoft-cs/cifar100` |
+| `fashion_mnist` | 784 (28×28) | 10 | `zalando-datasets/fashion_mnist` |
+| `mnist` | 784 (28×28) | 10 | `ylecun/mnist` |
+
+### Clustering Configuration
+
+| Parameter | Type | Default | Allowed Values / Constraints | Description |
+|-----------|------|---------|------------------------------|-------------|
+| `clustering-mode` | `str` | `"dynamic"` | `static`, `dynamic`, `adaptive` | Clustering strategy mode |
+| `n-client-clusters` | `int` | `3` | `≥ 2`, `≤ num_clients` | Number of client clusters for K-means |
+| `clustering-interval` | `int` | `3` | `≥ 1` | Rounds between re-clustering (only for `dynamic` mode) |
+| `drift-threshold` | `float` | `0.3` | `0.0 - 1.0` | Parameter drift threshold for adaptive re-clustering |
+
+#### Clustering Modes Explained
+
+| Mode | Behavior | When to Use |
+|------|----------|-------------|
+| `static` | Clusters once at round 1, never re-clusters | Baseline comparison, stable data distributions |
+| `dynamic` | Re-clusters every `clustering-interval` rounds | Known periodic changes, regular updates |
+| `adaptive` | Re-clusters when drift exceeds `drift-threshold` | Unknown drift patterns, resource-efficient |
+
+### Drift Simulation Configuration
+
+| Parameter | Type | Default | Allowed Values / Constraints | Description |
+|-----------|------|---------|------------------------------|-------------|
+| `drift-type` | `str` | `"none"` | `none`, `sudden`, `gradual`, `recurrent`, `incremental` | Type of concept drift to simulate |
+| `drift-round` | `int` | `10` | `1 ≤ value < num-server-rounds` | Round when drift starts |
+| `drift-magnitude` | `float` | `0.5` | `0.0 - 1.0` | Intensity of drift effect (0=none, 1=maximum) |
+
+#### Drift Types Explained
+
+| Type | Behavior | Use Case |
+|------|----------|----------|
+| `none` | No drift applied | Control/baseline experiments |
+| `sudden` | Instant change at `drift-round` | Simulating abrupt distribution shifts |
+| `gradual` | Linear transition over 5 rounds after `drift-round` | Smooth environment changes |
+| `recurrent` | Periodic alternation every 10 rounds | Cyclical patterns (e.g., seasonal) |
+| `incremental` | Small continuous changes each round | Slow environmental evolution |
+
+### MLflow Configuration
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `mlflow-experiment-name` | `str` | *auto-generated* | Custom MLflow experiment name |
+| `mlflow-run-name` | `str` | *auto-generated* | Custom MLflow run name |
+
+#### Auto-generated Naming Convention
+
+- **Experiment Name**: `fl-clustering-{dataset}-{clustering_mode}-drift_{drift_type}`
+- **Run Name**: `{clustering_mode}_{dataset}_k{n_clusters}_r{rounds}_drift{type}_{timestamp}`
+
+### Federation Configuration
+
+| Parameter | Type | Default | Constraints | Description |
+|-----------|------|---------|-------------|-------------|
+| `options.num-supernodes` | `int` | `10` | `≥ n-client-clusters` | Number of simulated clients/supernodes |
+
+---
+
+## Constraints & Validation Rules
+
+### Parameter Dependencies
+
+| Condition | Requirement |
+|-----------|-------------|
+| `clustering-mode = "dynamic"` | `clustering-interval` must be `≥ 1` and `< num-server-rounds` |
+| `clustering-mode = "adaptive"` | `drift-threshold` should be tuned (0.1-0.5 recommended) |
+| `drift-type ≠ "none"` | `drift-round` must be `< num-server-rounds` |
+| K-means clustering | `num-supernodes` must be `≥ n-client-clusters` |
+
+### Value Constraints Summary
+
+```yaml
+num-server-rounds:   1 ≤ value          (integer)
+local-epochs:        1 ≤ value          (integer)
+n-client-clusters:   2 ≤ value ≤ num-supernodes  (integer)
+clustering-interval: 1 ≤ value < num-server-rounds  (integer)
+drift-round:         1 ≤ value < num-server-rounds  (integer)
+drift-magnitude:     0.0 ≤ value ≤ 1.0  (float)
+drift-threshold:     0.0 ≤ value ≤ 1.0  (float)
+```
+
+---
+
+## Example Configurations
+
+### Baseline (No Drift, Static Clustering)
+
+```bash
+flwr run . --run-config "clustering-mode='static' drift-type='none'"
+```
+
+### Adaptive Response to Sudden Drift
+
+```bash
+flwr run . --run-config "clustering-mode='adaptive' drift-type='sudden' drift-round=8 drift-magnitude=0.7 drift-threshold=0.25"
+```
+
+### Dynamic Clustering with Gradual Drift
+
+```bash
+flwr run . --run-config "clustering-mode='dynamic' clustering-interval=3 drift-type='gradual' drift-round=5 n-client-clusters=4"
+```
+
+### Large-scale Experiment (CIFAR-100)
+
+```bash
+flwr run . --run-config "dataset='cifar100' num-server-rounds=30 n-client-clusters=10 clustering-mode='adaptive'"
+```
+
+---
+
+## MLflow Experiment Tracking
+
+Experiments are automatically tracked in MLflow. All plots are logged as artifacts.
+
+### Logged Metrics (per round)
+
+| Metric | Description |
+|--------|-------------|
+| `cluster_{id}_size` | Number of clients in each cluster |
+| `reclustering_count` | Cumulative re-clustering events |
+| `cluster_diversity` | Average distance between cluster centroids |
+| `avg_dist_from_global` | Average distance from global model |
+
+### Logged Artifacts
+
+| Artifact Path | Description |
+|---------------|-------------|
+| `cluster_plots/clusters_pca_round_{N}.png` | PCA visualization of clusters |
+| `cluster_plots/clusters_tsne_round_{N}.png` | t-SNE visualization of clusters |
+| `summary_plots/clustering_summary.png` | Training summary plot |
+| `final_model/` | Trained sklearn model |
+
+### View Experiments
+
+```bash
+mlflow ui
+```
+
+Navigate to `http://localhost:5000` to view experiments.
+
+---
+
+## Architecture
 
 ```
 dynamic_clustering_fl/
-├── domain/                 # Core abstractions
-│   ├── model.py           # Model interface
-│   ├── dataset.py         # Dataset interface
-│   └── aggregation.py     # Aggregation utilities
-├── infrastructure/         # Concrete implementations
-│   ├── models.py          # MLP, LogisticRegression
-│   ├── datasets.py        # CIFAR10, MNIST, etc.
-│   └── clustering.py      # Clustering strategy
-├── factory.py             # Model/dataset creation
-├── client_app.py          # Flower client
-└── server_app.py          # Flower server
+├── server_app.py     # ServerApp with ClusteredFedAvg strategy
+├── client_app.py     # ClientApp with local training
+├── task.py           # Model and data utilities
+├── clustering.py     # Clustering strategies (static/dynamic/adaptive)
+├── drift.py          # Drift simulators and tracking
+└── visualization.py  # PCA/t-SNE plots with MLflow integration
 ```
 
-## Extending
+## Research Metrics
 
-### Adding a New Dataset
-
-```python
-# In infrastructure/datasets.py
-@register_dataset("my-dataset")
-class MyDataset(BaseImageDataset):
-    def __init__(self, num_partitions: int):
-        super().__init__(
-            num_partitions=num_partitions,
-            dataset_name="huggingface/dataset-name",
-            image_key="image",
-            label_key="label",
-        )
-    
-    @property
-    def name(self) -> str:
-        return "my-dataset"
-    
-    @property
-    def num_classes(self) -> int:
-        return 10
-    
-    @property
-    def input_shape(self) -> tuple:
-        return (32, 32, 3)
-```
-
-### Adding a New Model
-
-```python
-# In infrastructure/models.py
-@register_model("my-model")
-class MyModel(Model):
-    def __init__(self, input_size: int, num_classes: int, **kwargs):
-        # Initialize your model
-        pass
-    
-    def get_parameters(self) -> NDArrays:
-        # Return model parameters
-        pass
-    
-    def set_parameters(self, params: NDArrays) -> None:
-        # Set model parameters
-        pass
-    
-    def train(self, X, y, epochs=1, **kwargs) -> dict:
-        # Train and return metrics
-        pass
-    
-    def evaluate(self, X, y, **kwargs) -> dict:
-        # Evaluate and return metrics
-        pass
-```
-
-## MLflow Tracking
-
-Experiments are automatically tracked with MLflow:
-
-```bash
-# View MLflow UI
-mlflow ui
-
-# Access at http://localhost:5000
-```
+The framework tracks:
+- **Accuracy**: Model performance over rounds
+- **Adaptation Speed**: Rounds to recover after drift
+- **Communication Cost**: Total re-clustering operations
+- **Cluster Diversity**: Distribution of clients across clusters
 
 ## License
 

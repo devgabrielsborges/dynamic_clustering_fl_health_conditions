@@ -1,8 +1,6 @@
 # ============================================================================
 #
-# The configuration produced by default is meant to highlight the features
-# that Zensical provides and to serve as a starting point for your own
-# projects.
+# Dynamic Clustering Federated Learning - Documentation Configuration
 #
 # ============================================================================
 
@@ -17,12 +15,12 @@ site_name = "Dynamic Clustering FL"
 # meaningful description of the site content for use by search engines.
 #
 # Read more: https://zensical.org/docs/setup/basics/#site_description
-site_description = "Dataset and model-agnostic Clustered Federated Learning using Flower and DDD principles"
+site_description = "Research framework for clustered federated learning with concept drift simulation in health condition monitoring."
 
 # The site_author attribute. This is used in the HTML head element.
 #
 # Read more: https://zensical.org/docs/setup/basics/#site_author
-site_author = "Gabriel Borges"
+site_author = "Research Team"
 
 # The site_url is the canonical URL for your site. When building online
 # documentation you should set this.
@@ -34,21 +32,17 @@ site_author = "Gabriel Borges"
 #
 # Read more: https://zensical.org/docs/setup/basics/#copyright
 copyright = """
-Copyright &copy; 2025-2026 Gabriel Borges
+Copyright &copy; 2025-2026 The authors. Apache-2.0 License.
 """
 
 # Zensical supports both implicit navigation and explicitly defined navigation.
-# If you decide not to define a navigation here then Zensical will simply
-# derive the navigation structure from the directory structure of your
-# "docs_dir". The definition below demonstrates how a navigation structure
-# can be defined using TOML syntax.
+# Navigation structure for the documentation site.
 #
 # Read more: https://zensical.org/docs/setup/navigation/
 nav = [
   { "Home" = "index.md" },
-  { "Configuration" = "configuration.md" },
-  { "Architecture" = "architecture.md" },
-  { "Extending" = "extending.md" },
+  { "Configuration Reference" = "configuration.md" },
+  { "API Reference" = "api-reference.md" },
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize
