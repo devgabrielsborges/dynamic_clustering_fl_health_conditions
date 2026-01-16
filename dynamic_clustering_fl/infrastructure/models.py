@@ -174,6 +174,48 @@ class MLPModel(Model):
         """Make predictions."""
         return self._model.predict(X)
 
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Predict class probabilities.
+
+        Raises:
+            AttributeError: If the underlying model does not implement
+                ``predict_proba``.
+        """
+        if not hasattr(self._model, "predict_proba"):
+            raise AttributeError(
+                "Underlying model does not support probability predictions "
+                "(predict_proba is not implemented)."
+            )
+        return self._model.predict_proba(X)
+
+    def partial_fit(
+        self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None
+    ) -> "MLPModel":
+        """Incremental fit on a batch of samples.
+
+        This delegates to the underlying sklearn MLPClassifier's partial_fit.
+
+        Args:
+            X: Training data.
+            y: Target values.
+            classes: Classes across all calls to partial_fit.
+
+        Returns:
+            self
+        """
+        if classes is None:
+            # Reuse previously stored classes if available; otherwise infer from y.
+            if hasattr(self, "_classes"):
+                classes = self._classes
+            else:
+                classes = np.unique(y)
+                self._classes = classes
+        else:
+            # Store explicitly provided classes for consistency across calls.
+            self._classes = classes
+        self._model.partial_fit(X, y, classes=classes)
+        return self
+
     @property
     def num_classes(self) -> int:
         return self._num_classes
