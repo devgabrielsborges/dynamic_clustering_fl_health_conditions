@@ -212,3 +212,5 @@ mlruns
 .dvc/config
 
 uv.lock
+
+data

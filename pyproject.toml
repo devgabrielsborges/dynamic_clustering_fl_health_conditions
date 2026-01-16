@@ -59,5 +59,23 @@ drift-threshold = 0.3
 [tool.flwr.federations]
 default = "local-simulation"
 
+# Use different federations to change num-supernodes via CLI:
+#   flwr run . local-10   (10 supernodes)
+#   flwr run . local-20   (20 supernodes)
+#   flwr run . local-50   (50 supernodes)
+#   flwr run . local-100  (100 supernodes)
+
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 10
+
+[tool.flwr.federations.local-10]
+options.num-supernodes = 10
+
+[tool.flwr.federations.local-20]
+options.num-supernodes = 20
+
+[tool.flwr.federations.local-50]
+options.num-supernodes = 50
+
+[tool.flwr.federations.local-100]
+options.num-supernodes = 100
