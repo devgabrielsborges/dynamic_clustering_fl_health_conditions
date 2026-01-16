@@ -147,6 +147,18 @@ def set_model_params(model, params: NDArrays) -> None:
     model.set_parameters(params)
 
 
+def flatten_params(params: NDArrays) -> np.ndarray:
+    """Flatten model parameters into a single 1D array.
+
+    Args:
+        params: List of numpy arrays representing model parameters.
+
+    Returns:
+        1D numpy array with all parameters concatenated.
+    """
+    return np.concatenate([p.flatten() for p in params])
+
+
 def load_data(
     dataset_name: str,
     partition_id: int,
