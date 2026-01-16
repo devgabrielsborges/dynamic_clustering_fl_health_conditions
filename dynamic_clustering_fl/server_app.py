@@ -317,7 +317,9 @@ def main(grid: Grid, context: Context) -> None:
 
     # Configure MLflow
     mlflow.set_experiment(mlflow_experiment)
-    mlflow.sklearn.autolog(log_models=False)
+    # Enable autolog with silent=True to suppress parameter change warnings
+    # that occur during federated learning with partial_fit
+    mlflow.sklearn.autolog(silent=True)
     mlflow.enable_system_metrics_logging()
     mlflow.set_system_metrics_sampling_interval(1)
 
