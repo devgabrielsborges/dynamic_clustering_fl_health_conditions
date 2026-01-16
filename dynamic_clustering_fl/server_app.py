@@ -318,6 +318,8 @@ def main(grid: Grid, context: Context) -> None:
     # Configure MLflow
     mlflow.set_experiment(mlflow_experiment)
     mlflow.sklearn.autolog(log_models=False)
+    mlflow.enable_system_metrics_logging()
+    mlflow.set_system_metrics_sampling_interval(1)
 
     # Create clustering strategy
     clustering_strategy = create_clustering_strategy(
