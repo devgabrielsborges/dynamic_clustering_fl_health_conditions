@@ -65,22 +65,36 @@ def get_dataset_config(dataset_name: str) -> Dict[str, Any]:
 
 
 def create_mlp_model(
-    input_size: int,
-    num_classes: int,
+    input_size: int | None = None,
+    num_classes: int | None = None,
     hidden_layers: tuple[int, ...] = (128, 64),
     learning_rate: float = 0.01,
+    *,
+    dataset: str | None = None,
 ):
     """Create an MLP model.
 
     Args:
-        input_size: Number of input features.
-        num_classes: Number of output classes.
+        input_size: Number of input features (optional if dataset provided).
+        num_classes: Number of output classes (optional if dataset provided).
         hidden_layers: Tuple of hidden layer sizes.
         learning_rate: Learning rate.
+        dataset: Dataset name to infer input_size and num_classes.
 
     Returns:
         Configured MLP model.
     """
+    # If dataset is provided, get config from it
+    if dataset is not None:
+        config = get_dataset_config(dataset)
+        if input_size is None:
+            input_size = config["input_size"]
+        if num_classes is None:
+            num_classes = config["num_classes"]
+
+    if input_size is None or num_classes is None:
+        raise ValueError("Either provide input_size/num_classes or dataset")
+
     model_cls = get_model_class("mlp")
     return model_cls(
         input_size=input_size,
@@ -137,12 +151,13 @@ def get_model_params(model) -> NDArrays:
     return model.get_parameters()
 
 
-def set_model_params(model, params: NDArrays) -> None:
+def set_model_params(model, params: NDArrays, *, dataset: str = None) -> None:
     """Set parameters on a model.
 
     Args:
         model: The model to update.
         params: List of numpy arrays to set as parameters.
+        dataset: Dataset name (unused, for API compatibility).
     """
     model.set_parameters(params)
 
@@ -160,28 +175,30 @@ def flatten_params(params: NDArrays) -> np.ndarray:
 
 
 def load_data(
-    dataset_name: str,
     partition_id: int,
     num_partitions: int,
+    *,
+    dataset: str,
 ):
     """Load data for a specific client partition.
 
     Args:
-        dataset_name: Name of the dataset.
         partition_id: ID of the partition to load.
         num_partitions: Total number of partitions.
+        dataset: Name of the dataset.
 
     Returns:
-        DataPartition with training and test data.
+        Tuple of (X_train, X_test, y_train, y_test).
     """
-    cache_key = f"{dataset_name}_{num_partitions}"
+    cache_key = f"{dataset}_{num_partitions}"
 
     if cache_key not in _dataset_cache:
-        dataset = create_dataset(dataset_name, num_partitions)
-        _dataset_cache[cache_key] = dataset
+        ds = create_dataset(dataset, num_partitions)
+        _dataset_cache[cache_key] = ds
 
-    dataset = _dataset_cache[cache_key]
-    return dataset.load_partition(partition_id)
+    ds = _dataset_cache[cache_key]
+    partition = ds.load_partition(partition_id)
+    return partition.X_train, partition.X_test, partition.y_train, partition.y_test
 
 
 def aggregate_weighted(
