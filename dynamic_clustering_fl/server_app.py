@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
 from flwr.app import ArrayRecord, Context, MetricRecord
+from flwr.common import NDArrays
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
 
