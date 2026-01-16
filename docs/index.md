@@ -219,6 +219,8 @@ $$
 
 > Go to [documentation](https://zensical.org/docs/authoring/tooltips/)
 
-[Hover me][example]
+## Next Steps
 
-  [example]: https://example.com "I'm a tooltip!"
+- [Configuration](configuration.md) - Learn about all available options
+- [Architecture](architecture.md) - Understand the DDD structure
+- [Extending](extending.md) - Add custom datasets and models

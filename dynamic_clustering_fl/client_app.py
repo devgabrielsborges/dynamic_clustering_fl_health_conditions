@@ -160,7 +160,7 @@ def evaluate(msg: Message, context: Context):
     except Exception:
         test_loss = 0.0
 
-    # Construct and return reply Message
+    # Construct reply
     metrics = {
         "num-examples": partition.num_test_samples,
         "test_accuracy": eval_metrics.get("accuracy", 0.0),
