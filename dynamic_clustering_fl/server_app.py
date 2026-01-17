@@ -6,6 +6,7 @@ Supports:
 - Adaptive clustering: Concept drift detection with adaptive re-clustering
 """
 
+import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
@@ -13,6 +14,7 @@ from datetime import datetime
 from typing import List, Tuple, Dict, Optional
 
 from flwr.app import ArrayRecord, Context, MetricRecord
+from flwr.common import NDArrays
 from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
 
@@ -247,18 +249,7 @@ class ClusteredFedAvg(FedAvg):
         if _mlflow_run is not None:
             mlflow.log_metrics(metrics, step=server_round)
 
-            # Log cluster sizes
-            for cluster_id in range(self.clustering.n_clusters):
-                cluster_size = sum(
-                    1
-                    for cid in client_ids
-                    if self.clustering.get_cluster_assignment(cid) == cluster_id
-                )
-                mlflow.log_metric(
-                    f"cluster_{cluster_id}_size", cluster_size, step=server_round
-                )
-
-        return ArrayRecord(aggregated_params), MetricRecord(metrics)
+        return metrics
 
 
 def generate_experiment_name(config: dict) -> str:
@@ -326,7 +317,11 @@ def main(grid: Grid, context: Context) -> None:
 
     # Configure MLflow
     mlflow.set_experiment(mlflow_experiment)
-    mlflow.sklearn.autolog(log_models=False)
+    # Enable autolog with silent=True to suppress parameter change warnings
+    # that occur during federated learning with partial_fit
+    mlflow.sklearn.autolog(silent=True)
+    mlflow.enable_system_metrics_logging()
+    mlflow.set_system_metrics_sampling_interval(1)
 
     # Create clustering strategy
     clustering_strategy = create_clustering_strategy(

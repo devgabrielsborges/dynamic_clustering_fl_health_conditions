@@ -7,8 +7,10 @@ from typing import Any, Dict, Type
 
 import joblib
 import numpy as np
+
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.neural_network import MLPClassifier
+
 
 from flwr.common import NDArrays
 
@@ -91,12 +93,14 @@ class MLPModel(Model):
             learning_rate_init=learning_rate,
             max_iter=10,
             random_state=42,
-            warm_start=True,
+            warm_start=False,  # warm_start only affects fit(); partial_fit is inherently incremental
             verbose=False,
         )
 
         # Initialize model structure
         self._initialize_model()
+        # Cache fitted state to avoid redundant checks in partial_fit
+        self._is_fitted = True
 
     def _initialize_model(self) -> None:
         """Initialize model weights with dummy data."""
@@ -173,6 +177,61 @@ class MLPModel(Model):
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Make predictions."""
         return self._model.predict(X)
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Predict class probabilities.
+
+        Raises:
+            AttributeError: If the underlying model does not implement
+                ``predict_proba``.
+        """
+        if not hasattr(self._model, "predict_proba"):
+            raise AttributeError(
+                "Underlying model does not support probability predictions "
+                "(predict_proba is not implemented)."
+            )
+        return self._model.predict_proba(X)
+
+    def partial_fit(
+        self, X: np.ndarray, y: np.ndarray, classes: np.ndarray | None = None
+    ) -> "MLPModel":
+        """Incremental fit on a batch of samples.
+
+        This delegates to the underlying sklearn MLPClassifier's partial_fit.
+
+        Note: partial_fit is inherently incremental and doesn't require
+        warm_start. The classes parameter informs sklearn of all possible
+        classes, even if some are missing from the current batch.
+
+        Args:
+            X: Training data.
+            y: Target values.
+            classes: Full set of classes across all data. If None, uses the
+                classes from the already-fitted model. Required on first fit.
+
+        Returns:
+            self
+
+        Raises:
+            ValueError: If model is not fitted and classes is not provided.
+        """
+        # Pass classes parameter to inform sklearn of all possible classes
+        if classes is None:
+            # Use the classes from the fitted model
+            if hasattr(self._model, "classes_"):
+                classes = self._model.classes_
+            else:
+                raise ValueError(
+                    "classes parameter is required on the first call to partial_fit "
+                    "when the underlying model is not yet fitted. Provide the "
+                    "'classes' argument on the first partial_fit call or ensure the "
+                    "model was initialized with valid class labels before training."
+                )
+
+        self._model.partial_fit(X, y, classes=classes)
+        self._is_fitted = True
+
+        return self
 
     @property
     def num_classes(self) -> int:
