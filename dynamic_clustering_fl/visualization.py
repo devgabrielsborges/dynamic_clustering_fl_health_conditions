@@ -55,6 +55,7 @@ def _log_plotly_figure_to_mlflow(
     fig: go.Figure,
     artifact_path: str,
     filename: str,
+    include_plotlyjs: bool | str = "cdn",
 ) -> bool:
     """Log a Plotly figure to MLflow as an artifact.
 
@@ -62,6 +63,8 @@ def _log_plotly_figure_to_mlflow(
         fig: The Plotly figure to log
         artifact_path: The artifact subdirectory path in MLflow
         filename: The filename for the artifact (should end in .html)
+        include_plotlyjs: Whether to include Plotly JS inline in the generated HTML
+                         (True for embedded, 'cdn' for CDN reference). Defaults to 'cdn'.
 
     Returns:
         True if logging succeeded, False otherwise
@@ -73,7 +76,7 @@ def _log_plotly_figure_to_mlflow(
         # Create a temporary HTML file and log it
         with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
             try:
-                fig.write_html(f.name, include_plotlyjs="cdn")
+                fig.write_html(f.name, include_plotlyjs=include_plotlyjs)
                 mlflow.log_artifact(f.name, artifact_path)
             finally:
                 try:
@@ -83,7 +86,9 @@ def _log_plotly_figure_to_mlflow(
                     pass
         return True
     except Exception as e:
-        print(f"  Warning: Could not log Plotly figure to MLflow: {e}")
+        print(
+            f"  Warning: Could not log Plotly figure to MLflow (include_plotlyjs={include_plotlyjs}): {e}"
+        )
         return False
 
 
@@ -256,12 +261,33 @@ def _plot_pca(
         height=700,
     )
 
-    # Save 3D plot
+    # Save 3D plot (CDN + embedded fallback)
     filename_3d = f"clusters_pca_3d_round_{server_round:03d}.html"
-    if log_to_mlflow:
-        _log_plotly_figure_to_mlflow(fig_3d, "cluster_plots", filename_3d)
+    filename_3d_embed = f"clusters_pca_3d_round_{server_round:03d}_embed.html"
     filepath_3d = os.path.join(output_dir, filename_3d)
+    filepath_3d_embed = os.path.join(output_dir, filename_3d_embed)
+
+    # Write CDN-based HTML (smaller, requires internet)
     fig_3d.write_html(filepath_3d, include_plotlyjs="cdn")
+
+    # Write embedded HTML (self-contained, larger, works offline)
+    try:
+        fig_3d.write_html(filepath_3d_embed, include_plotlyjs=True)
+    except Exception as e:
+        print(f"  Note: Could not write embedded HTML for PCA: {e}")
+
+    # Log both variants to MLflow when possible
+    if log_to_mlflow:
+        _log_plotly_figure_to_mlflow(
+            fig_3d, "cluster_plots", filename_3d, include_plotlyjs="cdn"
+        )
+        try:
+            # Log the embedded version (inline JS) so it renders offline
+            _log_plotly_figure_to_mlflow(
+                fig_3d, "cluster_plots", filename_3d_embed, include_plotlyjs=True
+            )
+        except Exception as e:
+            print(f"  Note: Could not log embedded PCA HTML to MLflow: {e}")
 
     # Ensure filepath_2d is defined even if 2D plotting failed or was skipped
     if "filepath_2d" not in locals():
@@ -407,12 +433,32 @@ def _plot_tsne(
         height=700,
     )
 
-    # Save 3D plot
+    # Save 3D plot (CDN + embedded fallback)
     filename_3d = f"clusters_tsne_3d_round_{server_round:03d}.html"
-    if log_to_mlflow:
-        _log_plotly_figure_to_mlflow(fig_3d, "cluster_plots", filename_3d)
+    filename_3d_embed = f"clusters_tsne_3d_round_{server_round:03d}_embed.html"
     filepath_3d = os.path.join(output_dir, filename_3d)
+    filepath_3d_embed = os.path.join(output_dir, filename_3d_embed)
+
+    # Write CDN-based HTML (smaller, requires internet)
     fig_3d.write_html(filepath_3d, include_plotlyjs="cdn")
+
+    # Write embedded HTML (self-contained, larger, works offline)
+    try:
+        fig_3d.write_html(filepath_3d_embed, include_plotlyjs=True)
+    except Exception as e:
+        print(f"  Note: Could not write embedded HTML for t-SNE: {e}")
+
+    # Log both variants to MLflow when possible
+    if log_to_mlflow:
+        _log_plotly_figure_to_mlflow(
+            fig_3d, "cluster_plots", filename_3d, include_plotlyjs="cdn"
+        )
+        try:
+            _log_plotly_figure_to_mlflow(
+                fig_3d, "cluster_plots", filename_3d_embed, include_plotlyjs=True
+            )
+        except Exception as e:
+            print(f"  Note: Could not log embedded t-SNE HTML to MLflow: {e}")
 
     return filepath_2d  # Return 2D path for backward compatibility
 
