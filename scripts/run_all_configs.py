@@ -166,7 +166,7 @@ def run_experiment(
     print(f"\n{'=' * 80}")
     print(f"Experiment {experiment_id}/{total}")
     print(f"{'=' * 80}")
-    print(f"Configuration:")
+    print("Configuration:")
     for key, value in config.items():
         print(f"  {key}: {value}")
     print(f"{'=' * 80}\n")

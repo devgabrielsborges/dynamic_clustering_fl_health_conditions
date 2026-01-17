@@ -145,20 +145,65 @@ def _plot_pca(
     n_clusters: int,
     log_to_mlflow: bool = True,
 ) -> str:
+    """Create both 2D (matplotlib) and 3D (Plotly) PCA visualizations."""
+    # Apply PCA with 3 components (use first 2 for 2D, all 3 for 3D)
     pca = PCA(n_components=3, random_state=42)
     reduced = pca.fit_transform(param_vectors)
+    var_explained = pca.explained_variance_ratio_
 
-    # Create DataFrame-like structure for plotting
+    # Color palette for matplotlib
+    colors_mpl = plt.cm.tab10(np.linspace(0, 1, max(n_clusters, 10)))
 
-    # Create 3D scatter plot
-    fig = go.Figure()
+    # --- 2D Matplotlib Visualization ---
+    fig_2d, ax = plt.subplots(figsize=(10, 8))
 
-    # Plot each cluster separately for legend control
+    for cluster_id in range(n_clusters):
+        mask = np.array(labels) == cluster_id
+        if mask.any():
+            ax.scatter(
+                reduced[mask, 0],
+                reduced[mask, 1],
+                c=[colors_mpl[cluster_id]],
+                label=f"Cluster {cluster_id}",
+                s=100,
+                alpha=0.7,
+                edgecolors="black",
+                linewidths=0.5,
+            )
+
+    # Add client labels
+    for i, (x, y) in enumerate(reduced[:, :2]):
+        ax.annotate(
+            f"C{i}",
+            (x, y),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8,
+            alpha=0.7,
+        )
+
+    ax.set_xlabel(f"PC1 ({var_explained[0]:.1%} variance)")
+    ax.set_ylabel(f"PC2 ({var_explained[1]:.1%} variance)")
+    ax.set_title(f"Client Clusters - 2D PCA Visualization (Round {server_round})")
+    ax.legend(loc="best")
+    ax.grid(True, alpha=0.3)
+
+    # Save 2D plot
+    filename_2d = f"clusters_pca_2d_round_{server_round:03d}.png"
+    if log_to_mlflow:
+        _log_figure_to_mlflow(fig_2d, "cluster_plots", filename_2d)
+    filepath_2d = os.path.join(output_dir, filename_2d)
+    plt.savefig(filepath_2d, dpi=150, bbox_inches="tight")
+    plt.close(fig_2d)
+
+    # --- 3D Plotly Visualization ---
+    fig_3d = go.Figure()
+
     for cluster_id in range(n_clusters):
         mask = np.array(labels) == cluster_id
         if mask.any():
             color = CLUSTER_COLORS[cluster_id % len(CLUSTER_COLORS)]
-            fig.add_trace(
+            fig_3d.add_trace(
                 go.Scatter3d(
                     x=reduced[mask, 0],
                     y=reduced[mask, 1],
@@ -184,11 +229,8 @@ def _plot_pca(
                 )
             )
 
-    # Calculate variance explained
-    var_explained = pca.explained_variance_ratio_
     total_var = sum(var_explained) * 100
-
-    fig.update_layout(
+    fig_3d.update_layout(
         title=dict(
             text=f"Client Clusters - 3D PCA Visualization (Round {server_round})<br>"
             f"<sub>Total variance explained: {total_var:.1f}%</sub>",
@@ -214,26 +256,17 @@ def _plot_pca(
         height=700,
     )
 
-    # Log to MLflow as artifact
-    filename = f"clusters_pca_round_{server_round:03d}.html"
+    # Save 3D plot
+    filename_3d = f"clusters_pca_3d_round_{server_round:03d}.html"
     if log_to_mlflow:
-        _log_plotly_figure_to_mlflow(fig, "cluster_plots", filename)
+        _log_plotly_figure_to_mlflow(fig_3d, "cluster_plots", filename_3d)
+    filepath_3d = os.path.join(output_dir, filename_3d)
+    fig_3d.write_html(filepath_3d, include_plotlyjs="cdn")
 
-    # Save plot locally as interactive HTML
-    filepath = os.path.join(output_dir, filename)
-    fig.write_html(filepath, include_plotlyjs="cdn")
-
-    # Also save a static PNG for quick preview
-    png_filename = f"clusters_pca_round_{server_round:03d}.png"
-    png_filepath = os.path.join(output_dir, png_filename)
-    try:
-        fig.write_image(png_filepath, scale=2)
-    except (ValueError, ImportError) as e:
-        # kaleido package is required for static image export
-        # Install with: uv add kaleido
-        print(f"  Note: PNG export skipped (install 'kaleido' for static images): {e}")
-
-    return filepath
+    # Ensure filepath_2d is defined even if 2D plotting failed or was skipped
+    if "filepath_2d" not in locals():
+        filepath_2d = ""
+    return filepath_2d  # Return 2D path for backward compatibility
 
 
 def _plot_tsne(
@@ -245,35 +278,88 @@ def _plot_tsne(
     log_to_mlflow: bool = True,
     perplexity: float = 5.0,
 ) -> str:
-    """Create interactive 3D t-SNE visualization of clusters using Plotly."""
+    """Create both 2D (matplotlib) and 3D (Plotly) t-SNE visualizations."""
     # Adjust perplexity for small sample sizes
     n_samples = len(param_vectors)
     actual_perplexity = min(perplexity, max(1, n_samples - 1))
 
-    # Apply t-SNE with 3 components for 3D visualization
-    tsne = TSNE(
+    # Color palette for matplotlib
+    colors_mpl = plt.cm.tab10(np.linspace(0, 1, max(n_clusters, 10)))
+
+    # --- 2D t-SNE Visualization ---
+    tsne_2d = TSNE(
+        n_components=2,
+        perplexity=actual_perplexity,
+        random_state=42,
+        max_iter=1000,
+        learning_rate="auto",
+        init="pca",
+    )
+    reduced_2d = tsne_2d.fit_transform(param_vectors)
+
+    fig_2d, ax = plt.subplots(figsize=(10, 8))
+
+    for cluster_id in range(n_clusters):
+        mask = np.array(labels) == cluster_id
+        if mask.any():
+            ax.scatter(
+                reduced_2d[mask, 0],
+                reduced_2d[mask, 1],
+                c=[colors_mpl[cluster_id]],
+                label=f"Cluster {cluster_id}",
+                s=100,
+                alpha=0.7,
+                edgecolors="black",
+                linewidths=0.5,
+            )
+
+    # Add client labels
+    for i, (x, y) in enumerate(reduced_2d):
+        ax.annotate(
+            f"C{i}",
+            (x, y),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8,
+            alpha=0.7,
+        )
+
+    ax.set_xlabel("t-SNE Dimension 1")
+    ax.set_ylabel("t-SNE Dimension 2")
+    ax.set_title(f"Client Clusters - 2D t-SNE Visualization (Round {server_round})")
+    ax.legend(loc="best")
+    ax.grid(True, alpha=0.3)
+
+    # Save 2D plot
+    filename_2d = f"clusters_tsne_2d_round_{server_round:03d}.png"
+    if log_to_mlflow:
+        _log_figure_to_mlflow(fig_2d, "cluster_plots", filename_2d)
+    filepath_2d = os.path.join(output_dir, filename_2d)
+    plt.savefig(filepath_2d, dpi=150, bbox_inches="tight")
+    plt.close(fig_2d)
+
+    # --- 3D t-SNE Visualization ---
+    tsne_3d = TSNE(
         n_components=3,
         perplexity=actual_perplexity,
         random_state=42,
         max_iter=1000,
         learning_rate="auto",
-        init="random",  # Use random init; PCA init is also supported for 3D in scikit-learn
+        init="random",  # PCA init not supported for 3D
     )
-    reduced = tsne.fit_transform(param_vectors)
+    reduced_3d = tsne_3d.fit_transform(param_vectors)
 
-    # Create 3D scatter plot
-    fig = go.Figure()
+    fig_3d = go.Figure()
 
-    # Plot each cluster separately for legend control
     for cluster_id in range(n_clusters):
         mask = np.array(labels) == cluster_id
         if mask.any():
             color = CLUSTER_COLORS[cluster_id % len(CLUSTER_COLORS)]
-            fig.add_trace(
+            fig_3d.add_trace(
                 go.Scatter3d(
-                    x=reduced[mask, 0],
-                    y=reduced[mask, 1],
-                    z=reduced[mask, 2],
+                    x=reduced_3d[mask, 0],
+                    y=reduced_3d[mask, 1],
+                    z=reduced_3d[mask, 2],
                     mode="markers+text",
                     marker=dict(
                         size=10,
@@ -295,7 +381,7 @@ def _plot_tsne(
                 )
             )
 
-    fig.update_layout(
+    fig_3d.update_layout(
         title=dict(
             text=f"Client Clusters - 3D t-SNE Visualization (Round {server_round})<br>"
             f"<sub>Perplexity: {actual_perplexity:.1f}</sub>",
@@ -321,26 +407,14 @@ def _plot_tsne(
         height=700,
     )
 
-    # Log to MLflow as artifact
-    filename = f"clusters_tsne_round_{server_round:03d}.html"
+    # Save 3D plot
+    filename_3d = f"clusters_tsne_3d_round_{server_round:03d}.html"
     if log_to_mlflow:
-        _log_plotly_figure_to_mlflow(fig, "cluster_plots", filename)
+        _log_plotly_figure_to_mlflow(fig_3d, "cluster_plots", filename_3d)
+    filepath_3d = os.path.join(output_dir, filename_3d)
+    fig_3d.write_html(filepath_3d, include_plotlyjs="cdn")
 
-    # Save plot locally as interactive HTML
-    filepath = os.path.join(output_dir, filename)
-    fig.write_html(filepath, include_plotlyjs="cdn")
-
-    # Also save a static PNG for quick preview
-    png_filename = f"clusters_tsne_round_{server_round:03d}.png"
-    png_filepath = os.path.join(output_dir, png_filename)
-    try:
-        fig.write_image(png_filepath, scale=2)
-    except (ValueError, ImportError) as e:
-        # kaleido package is required for static image export
-        # Install with: uv add kaleido
-        print(f"  Note: PNG export skipped (install 'kaleido' for static images): {e}")
-
-    return filepath
+    return filepath_2d  # Return 2D path for backward compatibility
 
 
 def create_clustering_summary_plot(
