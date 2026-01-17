@@ -20,23 +20,18 @@ from typing import Dict, List, Any, Generator, Union
 # ============================================================================
 
 CONFIG_SPACE = {
-    # Training configuration
-    "num-server-rounds": [10, 15, 20],
-    "local-epochs": [3, 5],
-    # Dataset and model
+    "num-server-rounds": [10, 15, 20, 30],
+    "local-epochs": [5, 10],
     "dataset": ["mnist", "fashion_mnist", "cifar10", "cifar100"],
-    "model": ["mlp"],  # Currently only MLP is supported
-    # Clustering configuration
+    "model": ["mlp"],
     "clustering-mode": ["static", "dynamic", "adaptive"],
     "n-client-clusters": [2, 3, 5],
-    "clustering-interval": [2, 3, 5],  # Only relevant for dynamic mode
-    # Drift simulation configuration
+    "clustering-interval": [2, 3, 5],
     "drift-type": ["none", "sudden", "gradual", "recurrent", "incremental"],
     "drift-round": [5, 8, 10],
     "drift-magnitude": [0.3, 0.5, 0.7],
-    "drift-threshold": [0.2, 0.3, 0.4],  # Only relevant for adaptive mode
-    # Federation configuration (via federation names)
-    "federation": ["local-10", "local-20", "local-50"],
+    "drift-threshold": [0.2, 0.3, 0.4],
+    "federation": ["local-10", "local-50", "local-100"],
 }
 
 
