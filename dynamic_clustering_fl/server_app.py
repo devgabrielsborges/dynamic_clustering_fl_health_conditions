@@ -38,10 +38,8 @@ from dynamic_clustering_fl.drift import (
 )
 from dynamic_clustering_fl.visualization import visualize_clusters
 
-# Create ServerApp
 app = ServerApp()
 
-# Global variable to track MLflow run
 _mlflow_run = None
 
 
@@ -76,7 +74,6 @@ class ClusteredFedAvg(FedAvg):
         if not results:
             return None, MetricRecord({})
 
-        # Extract parameters and metrics
         client_params = []
         client_weights = []
         client_ids = []
@@ -88,7 +85,6 @@ class ClusteredFedAvg(FedAvg):
             client_weights.append(num_examples)
             client_ids.append(str(i))
 
-        # Check if we should re-cluster
         should_recluster = self.clustering.should_recluster(
             server_round, client_params, self.previous_params
         )
@@ -99,7 +95,6 @@ class ClusteredFedAvg(FedAvg):
             )
             self.reclustering_count += 1
 
-            # Log clustering event
             mode_val = self.clustering.mode.value
             print(f"\n=== Round {server_round}: Clustering ({mode_val}) ===")
             for cluster_id, size in cluster_metrics.cluster_sizes.items():
@@ -114,7 +109,6 @@ class ClusteredFedAvg(FedAvg):
                     "reclustering_count", self.reclustering_count, step=server_round
                 )
 
-            # Generate cluster visualizations (automatically logged to MLflow)
             try:
                 plot_files = visualize_clusters(
                     client_params=client_params,
@@ -129,15 +123,12 @@ class ClusteredFedAvg(FedAvg):
             except Exception as e:
                 print(f"  Warning: Could not generate visualizations: {e}")
 
-        # Store for next round comparison
         self.previous_params = client_params
 
-        # Hierarchical aggregation: within-cluster then global
         aggregated_params, metrics = self._hierarchical_aggregate(
             client_ids, client_params, client_weights, server_round
         )
 
-        # Convert to ArrayRecord and MetricRecord for Flower API
         if aggregated_params is None:
             return None, MetricRecord(metrics)
 
@@ -161,7 +152,6 @@ class ClusteredFedAvg(FedAvg):
         Returns:
             Aggregated parameters and metrics
         """
-        # Group clients by cluster using the clustering strategy
         n_clusters = self.clustering.n_clusters
         cluster_groups: Dict[int, List[Tuple[NDArrays, float]]] = {
             i: [] for i in range(n_clusters)
@@ -219,7 +209,6 @@ class ClusteredFedAvg(FedAvg):
         if len(cluster_aggregates) < 2:
             return {"cluster_diversity": 0.0}
 
-        # Compute average distance between cluster aggregates
         total_dist = 0.0
         count = 0
         for i in range(len(cluster_aggregates)):
@@ -232,7 +221,6 @@ class ClusteredFedAvg(FedAvg):
 
         avg_cluster_dist = total_dist / count if count > 0 else 0.0
 
-        # Compute average distance from global aggregate
         avg_dist_from_global = np.mean(
             [
                 compute_param_distance(cluster_agg, global_aggregate)
@@ -245,7 +233,6 @@ class ClusteredFedAvg(FedAvg):
             "avg_dist_from_global": float(avg_dist_from_global),
         }
 
-        # Log to MLflow
         if _mlflow_run is not None:
             mlflow.log_metrics(metrics, step=server_round)
 
@@ -282,32 +269,25 @@ def main(grid: Grid, context: Context) -> None:
     """Main entry point for the ServerApp."""
     global _mlflow_run
 
-    # Read configuration
     num_rounds: int = context.run_config.get("num-server-rounds", 15)
     n_client_clusters: int = context.run_config.get("n-client-clusters", 3)
     clustering_interval: int = context.run_config.get("clustering-interval", 5)
     local_epochs: int = context.run_config.get("local-epochs", 3)
 
-    # Dataset and model config
     dataset: str = context.run_config.get("dataset", "cifar10")
     model_type: str = context.run_config.get("model", "mlp")
 
-    # Set current dataset for model initialization
     set_current_dataset(dataset)
     ds_config = get_dataset_config(dataset)
 
-    # Clustering mode: static, dynamic, adaptive
     clustering_mode: str = context.run_config.get("clustering-mode", "dynamic")
 
-    # Drift configuration
     drift_type: str = context.run_config.get("drift-type", "none")
     drift_round: int = context.run_config.get("drift-round", 10)
     drift_magnitude: float = context.run_config.get("drift-magnitude", 0.5)
 
-    # Adaptive clustering parameters
     drift_threshold: float = context.run_config.get("drift-threshold", 0.3)
 
-    # Generate dynamic MLflow names
     mlflow_experiment = context.run_config.get(
         "mlflow-experiment-name", generate_experiment_name(context.run_config)
     )
@@ -315,15 +295,11 @@ def main(grid: Grid, context: Context) -> None:
         "mlflow-run-name", generate_run_name(context.run_config)
     )
 
-    # Configure MLflow
     mlflow.set_experiment(mlflow_experiment)
-    # Enable autolog with silent=True to suppress parameter change warnings
-    # that occur during federated learning with partial_fit
     mlflow.sklearn.autolog(silent=True)
     mlflow.enable_system_metrics_logging()
     mlflow.set_system_metrics_sampling_interval(1)
 
-    # Create clustering strategy
     clustering_strategy = create_clustering_strategy(
         mode=clustering_mode,
         n_clusters=n_client_clusters,
@@ -331,7 +307,6 @@ def main(grid: Grid, context: Context) -> None:
         drift_threshold=drift_threshold,
     )
 
-    # Create drift simulator for experiment tracking
     drift_simulator = create_drift_simulator(
         drift_type=drift_type,
         drift_round=drift_round,
@@ -361,18 +336,15 @@ def main(grid: Grid, context: Context) -> None:
     # Get initial parameters
     arrays = ArrayRecord(model.get_parameters())
 
-    # Initialize strategy
     strategy = ClusteredFedAvg(
         clustering_strategy=clustering_strategy,
         fraction_train=1.0,
         fraction_evaluate=1.0,
     )
 
-    # Define evaluation function
     def evaluate_fn(server_round, arrays):
         return global_evaluate(server_round, arrays, model, dataset)
 
-    # Start MLflow run
     with mlflow.start_run(run_name=mlflow_run_name) as run:
         _mlflow_run = run
 
@@ -398,7 +370,6 @@ def main(grid: Grid, context: Context) -> None:
             }
         )
 
-        # Run federated learning
         print(f"Starting {clustering_mode} Clustered FL for {num_rounds} rounds...")
         result = strategy.start(
             grid=grid,
@@ -407,10 +378,8 @@ def main(grid: Grid, context: Context) -> None:
             evaluate_fn=evaluate_fn,
         )
 
-        # Log final metrics
         mlflow.log_metric("total_reclusterings", strategy.reclustering_count)
 
-        # Log drift tracker metrics
         drift_summary = drift_tracker.get_summary()
         mlflow.log_params(
             {
@@ -419,7 +388,6 @@ def main(grid: Grid, context: Context) -> None:
             }
         )
 
-        # Save final model
         print("\nSaving final model...")
         ndarrays = result.arrays.to_numpy_ndarrays()
         if len(ndarrays) > 0:

@@ -11,7 +11,6 @@ from flwr_datasets.partitioner import IidPartitioner
 from dynamic_clustering_fl.domain.dataset import Dataset, DataPartition
 
 
-# Registry of available datasets
 _DATASET_REGISTRY: Dict[str, Type[Dataset]] = {}
 
 
@@ -97,7 +96,6 @@ class BaseImageDataset(Dataset):
         )
         y = np.array(partition_data[self._label_key])
 
-        # Normalize to [0, 1]
         X = X.astype(np.float32) / 255.0
 
         return X, y
@@ -128,7 +126,6 @@ class BaseImageDataset(Dataset):
 
         self._ensure_initialized()
 
-        # Load all partitions and combine test data
         all_X_test = []
         all_y_test = []
 

@@ -47,14 +47,11 @@ def aggregate_weighted(params_list: List[NDArrays], weights: List[float]) -> NDA
     if not params_list:
         raise ValueError("Cannot aggregate empty parameter list")
 
-    # Normalize weights
     total_weight = sum(weights)
     normalized_weights = [w / total_weight for w in weights]
 
-    # Initialize aggregated params with zeros
     aggregated = [np.zeros_like(p) for p in params_list[0]]
 
-    # Weighted sum
     for params, weight in zip(params_list, normalized_weights):
         for i, p in enumerate(params):
             aggregated[i] += p * weight

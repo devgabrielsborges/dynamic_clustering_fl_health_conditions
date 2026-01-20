@@ -14,7 +14,6 @@ from dynamic_clustering_fl.infrastructure.models import get_model_class
 from dynamic_clustering_fl.infrastructure.datasets import get_dataset_class
 
 
-# Global cache for current dataset configuration
 _current_dataset = None
 _dataset_cache: Dict[str, Any] = {}
 
@@ -53,14 +52,12 @@ def get_dataset_config(dataset_name: str) -> Dict[str, Any]:
     # Try to get from dataset class
     try:
         dataset_cls = get_dataset_class(dataset_name)
-        # Create a minimal instance to get properties
         temp_dataset = dataset_cls(num_partitions=2)
         return {
             "input_size": temp_dataset.input_size,
             "num_classes": temp_dataset.num_classes,
         }
     except Exception:
-        # Default fallback
         return {"input_size": 32 * 32 * 3, "num_classes": 10}
 
 
@@ -84,7 +81,6 @@ def create_mlp_model(
     Returns:
         Configured MLP model.
     """
-    # If dataset is provided, get config from it
     if dataset is not None:
         config = get_dataset_config(dataset)
         if input_size is None:
@@ -247,7 +243,6 @@ def compute_param_distance(
     Returns:
         Distance value.
     """
-    # Flatten parameters
     flat1 = np.concatenate([p.flatten() for p in params1])
     flat2 = np.concatenate([p.flatten() for p in params2])
 

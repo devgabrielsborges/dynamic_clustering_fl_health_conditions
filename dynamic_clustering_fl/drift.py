@@ -99,12 +99,10 @@ class DriftSimulator(ABC):
         X_drifted = X.copy()
         y_drifted = y.copy()
 
-        # Feature drift: Add noise
         noise_scale = drift_factor * self.config.drift_magnitude
         noise = np.random.normal(0, noise_scale, X.shape)
         X_drifted = X_drifted + noise
 
-        # Label drift: Flip labels for affected classes
         if self.config.affected_classes is not None:
             flip_prob = drift_factor * self.config.drift_magnitude * 0.3
             for class_id in self.config.affected_classes:

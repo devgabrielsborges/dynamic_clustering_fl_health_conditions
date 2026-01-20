@@ -15,10 +15,6 @@ from pathlib import Path
 from typing import Dict, List, Any, Generator, Union
 
 
-# ============================================================================
-# Configuration Space - All Possible Values
-# ============================================================================
-
 CONFIG_SPACE = {
     "num-server-rounds": [10, 15, 20, 30],
     "local-epochs": [5, 10],
@@ -35,32 +31,19 @@ CONFIG_SPACE = {
 }
 
 
-# ============================================================================
-# Configuration Validation & Filtering
-# ============================================================================
-
-
 def is_valid_config(config: Dict[str, Any]) -> bool:
     """Validate configuration based on constraints and dependencies."""
 
-    # clustering-interval only relevant for dynamic mode
     if config["clustering-mode"] != "dynamic":
-        # Skip configs with varying clustering-interval when not in dynamic mode
-        # We'll normalize this in the config generation
         pass
 
-    # drift-threshold only relevant for adaptive mode
     if config["clustering-mode"] != "adaptive":
-        # Skip configs with varying drift-threshold when not in adaptive mode
         pass
 
-    # drift-round must be less than num-server-rounds
     if config["drift-round"] >= config["num-server-rounds"]:
         return False
 
-    # drift-round and drift-magnitude only relevant when drift-type != "none"
     if config["drift-type"] == "none":
-        # For no drift, we can ignore drift-round and drift-magnitude variations
         pass
 
     # num-supernodes (from federation) must be >= n-client-clusters
@@ -75,11 +58,9 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize config by removing irrelevant parameters for specific modes."""
     normalized = config.copy()
 
-    # Set default clustering-interval for non-dynamic modes
     if config["clustering-mode"] != "dynamic":
         normalized["clustering-interval"] = 3  # Default value
 
-    # Set default drift-threshold for non-adaptive modes
     if config["clustering-mode"] != "adaptive":
         normalized["drift-threshold"] = 0.3  # Default value
 
@@ -108,18 +89,14 @@ def generate_configs() -> Generator[Dict[str, Any], None, None]:
     keys = list(CONFIG_SPACE.keys())
     values = list(CONFIG_SPACE.values())
 
-    # Track seen configs to avoid duplicates (after normalization)
     seen = set()
 
-    # Generate combinations lazily using itertools.product
     for combo in itertools.product(*values):
         config = dict(zip(keys, combo))
 
-        # Skip invalid configurations
         if not is_valid_config(config):
             continue
 
-        # Normalize and check for duplicates
         normalized = normalize_config(config)
         config_key = json.dumps(normalized, sort_keys=True)
 
@@ -128,14 +105,8 @@ def generate_configs() -> Generator[Dict[str, Any], None, None]:
             yield normalized
 
 
-# ============================================================================
-# Experiment Execution
-# ============================================================================
-
-
 def build_run_config_string(config: Dict[str, Any]) -> str:
     """Build the --run-config string for flwr run command."""
-    # Exclude federation from run-config as it's passed separately
     config_items = []
     for key, value in config.items():
         if key == "federation":
@@ -171,17 +142,14 @@ def run_experiment(
         print(f"  {key}: {value}")
     print(f"{'=' * 80}\n")
 
-    # Build the command
     federation = config["federation"]
     run_config = build_run_config_string(config)
 
     cmd = ["flwr", "run", ".", federation, "--run-config", run_config]
 
-    # Record start time
     start_time = time.time()
     start_timestamp = datetime.now().isoformat()
 
-    # Run the experiment
     result = {
         "experiment_id": experiment_id,
         "config": config,
@@ -195,20 +163,17 @@ def run_experiment(
     try:
         print(f"Running command: {' '.join(cmd)}\n")
 
-        # Run the command and capture output
         process = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=3600,  # 1 hour timeout per experiment
+            timeout=3600,
         )
 
-        # Calculate duration
         duration = time.time() - start_time
         result["duration_seconds"] = duration
         result["end_time"] = datetime.now().isoformat()
 
-        # Write stdout/stderr to log files instead of storing in memory
         logs_dir.mkdir(parents=True, exist_ok=True)
         log_prefix = f"exp_{experiment_id:05d}"
         stdout_file = logs_dir / f"{log_prefix}_stdout.log"
@@ -220,7 +185,6 @@ def run_experiment(
         result["stdout_log"] = str(stdout_file)
         result["stderr_log"] = str(stderr_file)
 
-        # Check if successful
         if process.returncode == 0:
             result["status"] = "success"
             print(
@@ -228,7 +192,6 @@ def run_experiment(
             )
         else:
             result["status"] = "failed"
-            # Store error message (typically short) but reference full stderr log
             error_preview = process.stderr[:500] if process.stderr else "Unknown error"
             result["error"] = error_preview
             print(
@@ -256,11 +219,6 @@ def run_experiment(
     return result
 
 
-# ============================================================================
-# Results Persistence
-# ============================================================================
-
-
 def save_results(
     results: List[Dict[str, Any]], output_dir: Path, is_final: bool = False
 ):
@@ -274,7 +232,6 @@ def save_results(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save full results as JSON
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     prefix = "final" if is_final else "checkpoint"
     results_file = output_dir / f"{prefix}_experiments_{timestamp}.json"
@@ -284,9 +241,6 @@ def save_results(
 
     if is_final:
         print(f"\n✓ Saved final results to: {results_file}")
-    # Only print checkpoint saves occasionally to reduce output
-
-    # Save summary as CSV-style text
     summary_file = output_dir / f"{prefix}_summary_{timestamp}.txt"
 
     with open(summary_file, "w") as f:
@@ -306,7 +260,6 @@ def save_results(
         f.write(f"Timeout: {timeout}\n")
         f.write(f"Errors: {errors}\n\n")
 
-        # Duration statistics
         durations = [r["duration_seconds"] for r in results]
         if durations:
             f.write(
@@ -316,7 +269,6 @@ def save_results(
             f.write(f"Min duration: {min(durations):.2f}s\n")
             f.write(f"Max duration: {max(durations):.2f}s\n\n")
 
-        # Detailed listing
         f.write("=" * 100 + "\n")
         f.write("Detailed Results\n")
         f.write("=" * 100 + "\n\n")
@@ -334,11 +286,6 @@ def save_results(
         print(f"✓ Saved summary to: {summary_file}")
 
 
-# ============================================================================
-# Main Execution
-# ============================================================================
-
-
 def main():
     """Main function to run all experiments."""
 
@@ -347,7 +294,6 @@ def main():
     print("=" * 80)
     print()
 
-    # Estimate configuration space size
     print("Analyzing configuration space...")
     estimated_total = estimate_total_configs()
     print(f"Estimated possible combinations: {estimated_total:,}")
@@ -356,35 +302,28 @@ def main():
         "Actual count (after validation & deduplication) will be determined during execution.\n"
     )
 
-    # Setup directories
     output_dir = Path("results/experiment_runs")
     logs_dir = output_dir / "logs"
 
-    # Run experiments using generator (memory efficient)
     results = []
     start_time = time.time()
     experiment_id = 0
     save_interval = 10  # Save checkpoint every 10 experiments
 
-    # Process configs one at a time from generator
     for config in generate_configs():
         experiment_id += 1
 
-        # Note: We don't know total count ahead of time, so use '?' for display
         result = run_experiment(config, experiment_id, "?", logs_dir)
         results.append(result)
 
-        # Save checkpoint periodically (every save_interval experiments)
         if experiment_id % save_interval == 0:
             save_results(results, output_dir, is_final=False)
             print(f"  [Checkpoint saved: {experiment_id} experiments completed]")
 
-    # Check if any experiments ran
     if experiment_id == 0:
         print("No valid configurations found!")
         return
 
-    # Final summary
     total_duration = time.time() - start_time
 
     print("\n" + "=" * 80)
@@ -396,13 +335,7 @@ def main():
     print(f"Total duration: {total_duration:.2f}s ({total_duration / 3600:.2f}h)")
     print("=" * 80)
 
-    # Save final results
     save_results(results, output_dir, is_final=True)
-
-    print("\n✓ All results saved to results/experiment_runs/")
-    print("✓ Experiment logs saved to results/experiment_runs/logs/")
-    print("\n✓ Check MLflow UI for detailed metrics and visualizations:")
-    print("  mlflow ui")
 
 
 if __name__ == "__main__":

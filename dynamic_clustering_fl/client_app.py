@@ -16,7 +16,6 @@ from dynamic_clustering_fl.task import (
     set_current_dataset,
 )
 
-# Flower ClientApp
 app = ClientApp()
 
 
@@ -24,30 +23,24 @@ app = ClientApp()
 def train(msg: Message, context: Context):
     """Train the MLP model on local data."""
 
-    # Get dataset configuration
     dataset = context.run_config.get("dataset", "cifar10")
     set_current_dataset(dataset)
     config = get_dataset_config(dataset)
     num_classes = config["num_classes"]
 
-    # Get received model parameters
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
 
-    # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     X_train, X_test, y_train, y_test = load_data(
         partition_id, num_partitions, dataset=dataset
     )
 
-    # Create MLP model
     model = create_mlp_model(dataset=dataset)
 
-    # Set parameters if received from server
     if len(ndarrays) > 0:
         set_model_params(model, ndarrays, dataset=dataset)
 
-    # Train the model on local data using partial_fit
     local_epochs = context.run_config.get("local-epochs", 5)
 
     with warnings.catch_warnings():
@@ -70,7 +63,6 @@ def train(msg: Message, context: Context):
     except Exception:
         train_loss = 0.0
 
-    # Construct and return reply Message
     ndarrays = get_model_params(model)
     model_record = ArrayRecord(ndarrays)
 
@@ -89,26 +81,21 @@ def train(msg: Message, context: Context):
 def evaluate(msg: Message, context: Context):
     """Evaluate the MLP model on local test data."""
 
-    # Get dataset configuration
     dataset = context.run_config.get("dataset", "cifar10")
     set_current_dataset(dataset)
 
-    # Get received model parameters
     ndarrays = msg.content["arrays"].to_numpy_ndarrays()
 
-    # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     X_train, X_test, y_train, y_test = load_data(
         partition_id, num_partitions, dataset=dataset
     )
 
-    # Create MLP model and set parameters
     model = create_mlp_model(dataset=dataset)
     if len(ndarrays) > 0:
         set_model_params(model, ndarrays, dataset=dataset)
 
-    # Evaluate on test data
     y_test_pred = model.predict(X_test)
     test_accuracy = accuracy_score(y_test, y_test_pred)
 
@@ -118,7 +105,6 @@ def evaluate(msg: Message, context: Context):
     except Exception:
         test_loss = 0.0
 
-    # Construct reply
     metrics = {
         "num-examples": len(X_test),
         "test_accuracy": test_accuracy,

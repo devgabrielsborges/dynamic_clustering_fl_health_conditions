@@ -17,7 +17,6 @@ from flwr.common import NDArrays
 from dynamic_clustering_fl.domain.model import Model
 
 
-# Registry of available models
 _MODEL_REGISTRY: Dict[str, Type[Model]] = {}
 
 
@@ -97,7 +96,6 @@ class MLPModel(Model):
             verbose=False,
         )
 
-        # Initialize model structure
         self._initialize_model()
         # Cache fitted state to avoid redundant checks in partial_fit
         self._is_fitted = True
@@ -142,7 +140,6 @@ class MLPModel(Model):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             for _ in range(epochs):
-                # Shuffle data each epoch
                 indices = np.random.permutation(len(X))
                 X_shuffled = X[indices]
                 y_shuffled = y[indices]
@@ -150,7 +147,6 @@ class MLPModel(Model):
                     X_shuffled, y_shuffled, classes=np.arange(self._num_classes)
                 )
 
-        # Compute training metrics
         return self.evaluate(X, y)
 
     def evaluate(

@@ -53,14 +53,12 @@ class ClusteredAggregation(AggregationStrategy):
         if not client_params:
             raise ValueError("No client parameters to aggregate")
 
-        # Perform clustering if needed
         should_cluster = (
             server_round % self.clustering_round_interval == 0 or server_round == 1
         )
         if should_cluster:
             self._cluster_clients(client_ids, client_params, server_round)
 
-        # Hierarchical aggregation
         aggregated, metrics = self._hierarchical_aggregate(
             client_ids, client_params, client_weights, server_round
         )
@@ -127,7 +125,6 @@ class ClusteredAggregation(AggregationStrategy):
             cluster_id = self.client_clusters.get(cid, 0)
             cluster_groups[cluster_id].append((params, weight))
 
-        # Within-cluster aggregation
         cluster_aggregates = []
         cluster_total_weights = []
 
@@ -147,7 +144,6 @@ class ClusteredAggregation(AggregationStrategy):
                 f"total weight: {sum(weights_list)}"
             )
 
-        # Global aggregation
         if not cluster_aggregates:
             raise ValueError("No cluster aggregates computed")
 
@@ -170,7 +166,6 @@ class ClusteredAggregation(AggregationStrategy):
         if len(cluster_aggregates) < 2:
             return {"cluster_diversity": 0.0}
 
-        # Average distance between cluster aggregates
         total_dist = 0.0
         count = 0
         for i in range(len(cluster_aggregates)):
@@ -183,7 +178,6 @@ class ClusteredAggregation(AggregationStrategy):
 
         avg_cluster_dist = total_dist / count if count > 0 else 0.0
 
-        # Average distance from global
         avg_dist_from_global = np.mean(
             [
                 compute_param_distance(cluster_agg, global_aggregate)
