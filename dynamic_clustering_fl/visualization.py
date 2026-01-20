@@ -21,7 +21,6 @@ from flwr.common import NDArrays
 
 from dynamic_clustering_fl.task import flatten_params
 
-# Color palette for clusters (Plotly-compatible)
 CLUSTER_COLORS = px.colors.qualitative.Set1
 
 
@@ -73,7 +72,6 @@ def _log_plotly_figure_to_mlflow(
         return False
 
     try:
-        # Create a temporary HTML file and log it
         with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
             try:
                 fig.write_html(f.name, include_plotlyjs=include_plotlyjs)
@@ -82,7 +80,6 @@ def _log_plotly_figure_to_mlflow(
                 try:
                     os.unlink(f.name)
                 except OSError:
-                    # If the file is already removed or cannot be deleted, ignore the error
                     pass
         return True
     except Exception as e:
@@ -115,13 +112,10 @@ def visualize_clusters(
     Returns:
         List of paths to saved plot files
     """
-    # Create output directory
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Flatten parameters to vectors
     param_vectors = np.array([flatten_params(p) for p in client_params])
 
-    # Get cluster labels for each client
     client_ids = list(cluster_assignments.keys())
     labels = [cluster_assignments.get(cid, 0) for cid in client_ids]
 
@@ -156,10 +150,8 @@ def _plot_pca(
     reduced = pca.fit_transform(param_vectors)
     var_explained = pca.explained_variance_ratio_
 
-    # Color palette for matplotlib
     colors_mpl = plt.cm.tab10(np.linspace(0, 1, max(n_clusters, 10)))
 
-    # --- 2D Matplotlib Visualization ---
     fig_2d, ax = plt.subplots(figsize=(10, 8))
 
     for cluster_id in range(n_clusters):
@@ -176,7 +168,6 @@ def _plot_pca(
                 linewidths=0.5,
             )
 
-    # Add client labels
     for i, (x, y) in enumerate(reduced[:, :2]):
         ax.annotate(
             f"C{i}",
@@ -193,7 +184,6 @@ def _plot_pca(
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
 
-    # Save 2D plot
     filename_2d = f"clusters_pca_2d_round_{server_round:03d}.png"
     if log_to_mlflow:
         _log_figure_to_mlflow(fig_2d, "cluster_plots", filename_2d)
@@ -201,7 +191,6 @@ def _plot_pca(
     plt.savefig(filepath_2d, dpi=150, bbox_inches="tight")
     plt.close(fig_2d)
 
-    # --- 3D Plotly Visualization ---
     fig_3d = go.Figure()
 
     for cluster_id in range(n_clusters):
@@ -261,38 +250,32 @@ def _plot_pca(
         height=700,
     )
 
-    # Save 3D plot (CDN + embedded fallback)
     filename_3d = f"clusters_pca_3d_round_{server_round:03d}.html"
     filename_3d_embed = f"clusters_pca_3d_round_{server_round:03d}_embed.html"
     filepath_3d = os.path.join(output_dir, filename_3d)
     filepath_3d_embed = os.path.join(output_dir, filename_3d_embed)
 
-    # Write CDN-based HTML (smaller, requires internet)
     fig_3d.write_html(filepath_3d, include_plotlyjs="cdn")
 
-    # Write embedded HTML (self-contained, larger, works offline)
     try:
         fig_3d.write_html(filepath_3d_embed, include_plotlyjs=True)
     except Exception as e:
         print(f"  Note: Could not write embedded HTML for PCA: {e}")
 
-    # Log both variants to MLflow when possible
     if log_to_mlflow:
         _log_plotly_figure_to_mlflow(
             fig_3d, "cluster_plots", filename_3d, include_plotlyjs="cdn"
         )
         try:
-            # Log the embedded version (inline JS) so it renders offline
             _log_plotly_figure_to_mlflow(
                 fig_3d, "cluster_plots", filename_3d_embed, include_plotlyjs=True
             )
         except Exception as e:
             print(f"  Note: Could not log embedded PCA HTML to MLflow: {e}")
 
-    # Ensure filepath_2d is defined even if 2D plotting failed or was skipped
     if "filepath_2d" not in locals():
         filepath_2d = ""
-    return filepath_2d  # Return 2D path for backward compatibility
+    return filepath_2d
 
 
 def _plot_tsne(
@@ -305,14 +288,11 @@ def _plot_tsne(
     perplexity: float = 5.0,
 ) -> str:
     """Create both 2D (matplotlib) and 3D (Plotly) t-SNE visualizations."""
-    # Adjust perplexity for small sample sizes
     n_samples = len(param_vectors)
     actual_perplexity = min(perplexity, max(1, n_samples - 1))
 
-    # Color palette for matplotlib
     colors_mpl = plt.cm.tab10(np.linspace(0, 1, max(n_clusters, 10)))
 
-    # --- 2D t-SNE Visualization ---
     tsne_2d = TSNE(
         n_components=2,
         perplexity=actual_perplexity,
@@ -339,7 +319,6 @@ def _plot_tsne(
                 linewidths=0.5,
             )
 
-    # Add client labels
     for i, (x, y) in enumerate(reduced_2d):
         ax.annotate(
             f"C{i}",
@@ -356,7 +335,6 @@ def _plot_tsne(
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
 
-    # Save 2D plot
     filename_2d = f"clusters_tsne_2d_round_{server_round:03d}.png"
     if log_to_mlflow:
         _log_figure_to_mlflow(fig_2d, "cluster_plots", filename_2d)
@@ -364,7 +342,6 @@ def _plot_tsne(
     plt.savefig(filepath_2d, dpi=150, bbox_inches="tight")
     plt.close(fig_2d)
 
-    # --- 3D t-SNE Visualization ---
     tsne_3d = TSNE(
         n_components=3,
         perplexity=actual_perplexity,
